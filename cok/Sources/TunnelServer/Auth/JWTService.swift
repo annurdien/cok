@@ -116,12 +116,12 @@ public struct JWTService: Sendable {
         let payloadBase64 = parts[1]
         let signatureBase64 = parts[2]
         
-        // Verify signature
+        // Verify signature using constant-time comparison
         let message = "\(headerBase64).\(payloadBase64)"
-        let expectedSignature = HMAC<SHA256>.authenticationCode(for: Data(message.utf8), using: secret)
-        let expectedSignatureBase64 = base64URLEncode(Data(expectedSignature))
-        
-        guard signatureBase64 == expectedSignatureBase64 else {
+        guard let providedSignature = base64URLDecode(signatureBase64) else {
+            throw Error.invalidSignature
+        }
+        guard HMAC<SHA256>.isValidAuthenticationCode(providedSignature, authenticating: Data(message.utf8), using: secret) else {
             throw Error.invalidSignature
         }
         

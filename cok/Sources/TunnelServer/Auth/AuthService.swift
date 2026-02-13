@@ -76,15 +76,15 @@ public actor AuthService {
     
     /// Verifies an API key using HMAC validation
     /// This allows verification without storing keys in memory (stateless)
+    /// Uses constant-time comparison to prevent timing attacks
     public func verifyAPIKeyHMAC(_ key: String, subdomain: String, timestamp: TimeInterval) -> Bool {
         let message = "\(subdomain):\(timestamp)"
-        let signature = HMAC<SHA256>.authenticationCode(
-            for: Data(message.utf8),
+        guard let keyData = Data(hexString: key) else { return false }
+        return HMAC<SHA256>.isValidAuthenticationCode(
+            keyData,
+            authenticating: Data(message.utf8),
             using: SymmetricKey(data: Data(secret.utf8))
         )
-        let expectedKey = signature.compactMap { String(format: "%02x", $0) }.joined()
-        
-        return key == expectedKey
     }
     
     // MARK: - JWT Token Management
@@ -123,6 +123,21 @@ public actor AuthService {
     /// Removes expired API keys
     public func cleanupExpiredKeys() {
         apiKeys = apiKeys.filter { !$0.value.isExpired }
+    }
+}
+
+extension Data {
+    init?(hexString: String) {
+        let len = hexString.count / 2
+        var data = Data(capacity: len)
+        var index = hexString.startIndex
+        for _ in 0..<len {
+            let nextIndex = hexString.index(index, offsetBy: 2)
+            guard let byte = UInt8(hexString[index..<nextIndex], radix: 16) else { return nil }
+            data.append(byte)
+            index = nextIndex
+        }
+        self = data
     }
 }
 
