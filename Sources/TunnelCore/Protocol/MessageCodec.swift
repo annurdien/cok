@@ -24,7 +24,7 @@ public struct JSONMessageCodec: MessageCodec {
         buffer.writeBytes(data)
         return buffer
     }
-    
+
     public func encode<T: Encodable & Sendable>(_ message: T, into buffer: inout ByteBuffer) throws {
         let data = try encoder.encode(message)
         buffer.writeBytes(data)
@@ -32,8 +32,8 @@ public struct JSONMessageCodec: MessageCodec {
 
     public func decode<T: Decodable & Sendable>(_ type: T.Type, from buffer: ByteBuffer) throws -> T {
         return try buffer.withUnsafeReadableBytes { pointer in
-            try decoder.decode(type, from: Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: pointer.baseAddress!), 
-                                                 count: pointer.count, 
+            try decoder.decode(type, from: Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: pointer.baseAddress!),
+                                                 count: pointer.count,
                                                  deallocator: .none))
         }
     }

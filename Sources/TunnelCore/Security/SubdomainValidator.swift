@@ -1,11 +1,11 @@
 import Foundation
 
 public struct SubdomainValidator: Sendable {
-    
+
     private static let minLength = 3
     private static let maxLength = 63
     private static let subdomainPattern = "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
-    
+
     private static let reservedSubdomains: Set<String> = [
         "www", "api", "admin", "root", "system", "internal",
         "localhost", "staging", "production", "dev",
@@ -14,12 +14,12 @@ public struct SubdomainValidator: Sendable {
         "dashboard", "console", "panel", "control",
         "status", "health", "metrics", "monitoring"
     ]
-    
+
     private static let profanityList: Set<String> = [
         "fuck", "shit", "damn", "hell", "ass", "bitch",
         "porn", "sex", "xxx", "nude", "nsfw", "rape"
     ]
-    
+
     public enum ValidationError: Error, Sendable {
         case tooShort(minimum: Int)
         case tooLong(maximum: Int)
@@ -30,7 +30,7 @@ public struct SubdomainValidator: Sendable {
         case endsWithHyphen
         case consecutiveHyphens
         case empty
-        
+
         public var message: String {
             switch self {
             case .tooShort(let min): return "Subdomain must be at least \(min) characters"
@@ -45,10 +45,10 @@ public struct SubdomainValidator: Sendable {
             }
         }
     }
-    
+
     public static func validate(_ subdomain: String) throws -> String {
         let normalized = subdomain.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        
+
         guard !normalized.isEmpty else { throw ValidationError.empty }
         guard normalized.count >= minLength else { throw ValidationError.tooShort(minimum: minLength) }
         guard normalized.count <= maxLength else { throw ValidationError.tooLong(maximum: maxLength) }
@@ -60,10 +60,10 @@ public struct SubdomainValidator: Sendable {
         }
         guard !reservedSubdomains.contains(normalized) else { throw ValidationError.reserved(subdomain: normalized) }
         guard !profanityList.contains(normalized) else { throw ValidationError.containsProfanity }
-        
+
         return normalized
     }
-    
+
     public static func isValid(_ subdomain: String) -> Bool {
         (try? validate(subdomain)) != nil
     }

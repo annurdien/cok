@@ -34,10 +34,10 @@ public final class WebSocketServer: Sendable {
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { channel in
                 let upgrader = NIOWebSocketServerUpgrader(
-                    shouldUpgrade: { channel, head in
+                    shouldUpgrade: { channel, _ in
                         channel.eventLoop.makeSucceededFuture(HTTPHeaders())
                     },
-                    upgradePipelineHandler: { channel, req in
+                    upgradePipelineHandler: { channel, _ in
                         channel.pipeline.addHandler(
                             WebSocketHandler(
                                 config: self.config,
@@ -202,16 +202,15 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     private func handleConnectRequest(context: ChannelHandlerContext, eventLoop: EventLoop, payload: ByteBuffer) async
-        throws
-    {
+        throws {
         let clientIP = context.remoteAddress?.ipAddress ?? "unknown"
-        
+
         guard await rateLimiter.tryConsume(identifier: clientIP) else {
             try await sendError(context: context, eventLoop: eventLoop, code: 429, message: "Rate limit exceeded")
             eventLoop.execute { context.close(promise: nil) }
             return
         }
-        
+
         let request = try codec.decode(ConnectRequest.self, from: payload)
 
         let isValid = await authService.validateAPIKey(request.apiKey) != nil
@@ -224,7 +223,7 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
         }
 
         var subdomain = request.requestedSubdomain ?? UUID().uuidString.prefix(8).lowercased()
-        
+
         if let requested = request.requestedSubdomain {
             if !SubdomainValidator.isValid(requested) {
                 try await sendError(context: context, eventLoop: eventLoop, code: 400, message: "Invalid subdomain format")
@@ -290,8 +289,7 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     private func sendError(context: ChannelHandlerContext, eventLoop: EventLoop, code: UInt16, message: String) async
-        throws
-    {
+        throws {
         let errorMsg = ErrorMessage(code: code, message: message)
         let payload = try codec.encode(errorMsg)
         let frame = try ProtocolFrame(

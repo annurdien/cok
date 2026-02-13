@@ -2,22 +2,22 @@ import Foundation
 
 public struct PrometheusExporter: Sendable {
     public init() {}
-    
+
     public func export(_ metrics: AllMetrics) -> String {
         var lines: [String] = []
-        
+
         for (name, value) in metrics.counters.sorted(by: { $0.key < $1.key }) {
             let (metricName, labels) = parseKey(name)
             lines.append("# TYPE \(metricName) counter")
             lines.append("\(metricName)\(labels) \(value)")
         }
-        
+
         for (name, value) in metrics.gauges.sorted(by: { $0.key < $1.key }) {
             let (metricName, labels) = parseKey(name)
             lines.append("# TYPE \(metricName) gauge")
             lines.append("\(metricName)\(labels) \(formatValue(value))")
         }
-        
+
         for (name, stats) in metrics.histograms.sorted(by: { $0.key < $1.key }) {
             let (metricName, labels) = parseKey(name)
             lines.append("# TYPE \(metricName) histogram")
@@ -36,10 +36,10 @@ public struct PrometheusExporter: Sendable {
             lines.append("\(metricName)_bucket\(mergeLabels(labels, "le", "10.0")) \(bucketCount(stats, 10.0))")
             lines.append("\(metricName)_bucket\(mergeLabels(labels, "le", "+Inf")) \(stats.count)")
         }
-        
+
         return lines.joined(separator: "\n")
     }
-    
+
     private func parseKey(_ key: String) -> (name: String, labels: String) {
         guard let braceStart = key.firstIndex(of: "{"),
               let braceEnd = key.lastIndex(of: "}") else {
@@ -49,7 +49,7 @@ public struct PrometheusExporter: Sendable {
         let labels = String(key[braceStart...braceEnd])
         return (name, labels)
     }
-    
+
     private func mergeLabels(_ existing: String, _ key: String, _ value: String) -> String {
         if existing.isEmpty {
             return "{\(key)=\"\(value)\"}"
@@ -57,14 +57,14 @@ public struct PrometheusExporter: Sendable {
         let inner = existing.dropFirst().dropLast()
         return "{\(inner),\(key)=\"\(value)\"}"
     }
-    
+
     private func formatValue(_ value: Double) -> String {
         if value == value.rounded() && abs(value) < 1e15 {
             return String(format: "%.0f", value)
         }
         return String(value)
     }
-    
+
     private func bucketCount(_ stats: HistogramStats, _ le: Double) -> Int {
         if stats.max <= le { return stats.count }
         if stats.min > le { return 0 }

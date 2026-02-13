@@ -49,7 +49,7 @@ public struct RequestConverter: Sendable {
         let head = HTTPResponseHead(version: .http1_1, status: status, headers: headers)
 
         let body: ByteBuffer?
-        if message.body.count > 0 {
+        if !message.body.isEmpty {
             var buffer = ByteBufferAllocator().buffer(capacity: message.body.count)
             buffer.writeBytes(message.body)
             body = buffer

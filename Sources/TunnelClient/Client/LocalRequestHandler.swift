@@ -23,15 +23,20 @@ public actor LocalRequestHandler {
         self.logger = logger
     }
 
-    public func handleRequest(head: HTTPRequestHead, body: ByteBuffer) async throws -> (HTTPResponseHead, ByteBuffer?) {
+    public func handleRequest(
+        head: HTTPRequestHead,
+        body: ByteBuffer
+    ) async throws -> (HTTPResponseHead, ByteBuffer?) {
         guard await circuitBreaker.canAttempt() else {
             logger.warning("Circuit breaker is open, rejecting request")
-            throw TunnelError.client(.localServerUnreachable(host: config.localHost, port: config.localPort), context: ErrorContext(component: "RequestHandler"))
+            let err = ClientError.localServerUnreachable(host: config.localHost, port: config.localPort)
+            throw TunnelError.client(err, context: ErrorContext(component: "RequestHandler"))
         }
 
         guard await websocketClient.isConnected() else {
             await circuitBreaker.recordFailure()
-            throw TunnelError.client(.connectionFailed("Not connected to tunnel server"), context: ErrorContext(component: "RequestHandler"))
+            let err = ClientError.connectionFailed("Not connected to tunnel server")
+            throw TunnelError.client(err, context: ErrorContext(component: "RequestHandler"))
         }
 
         let requestID = UUID()
@@ -81,7 +86,11 @@ public actor LocalRequestHandler {
                                     "requestID": "\(requestID.uuidString.prefix(8))"
                                 ])
 
-                                storedContinuation.resume(throwing: TunnelError.client(.timeout, context: ErrorContext(component: "RequestHandler")))
+                                let err = TunnelError.client(
+                                    .timeout,
+                                    context: ErrorContext(component: "RequestHandler")
+                                )
+                                storedContinuation.resume(throwing: err)
                             }
                         }
                     } catch {
@@ -223,7 +232,7 @@ public actor LocalRequestHandler {
         let head = HTTPResponseHead(version: .http1_1, status: status, headers: headers)
 
         let body: ByteBuffer?
-        if message.body.count > 0 {
+        if !message.body.isEmpty {
             var buffer = ByteBufferAllocator().buffer(capacity: message.body.count)
             buffer.writeBytes(message.body)
             body = buffer

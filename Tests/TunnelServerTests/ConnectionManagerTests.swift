@@ -31,7 +31,7 @@ final class ConnectionManagerTests: XCTestCase {
 
         XCTAssertEqual(tunnel.subdomain, "test")
         XCTAssertEqual(tunnel.apiKey, "key123")
-        
+
         let count = await manager.connectionCount()
         XCTAssertEqual(count, 1)
     }

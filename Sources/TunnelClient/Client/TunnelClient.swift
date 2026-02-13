@@ -46,7 +46,7 @@ public actor TunnelClient {
 
     public func start() async throws {
         await setupMessageHandling()
-        
+
         guard !isRunning else {
             logger.warning("Client is already running")
             return
@@ -116,7 +116,7 @@ public struct ClientStatus: Sendable {
         WebSocket: \(websocketState)
         Circuit Breaker: \(circuitBreakerState)
         Pending Requests: \(pendingRequests)
-        
+
         Configuration:
         - Server: \(config.serverURL)
         - Subdomain: \(config.subdomain)

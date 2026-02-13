@@ -1,6 +1,6 @@
 import Foundation
 
-public actor CircuitBreaker: Sendable {
+public actor CircuitBreaker {
     public enum State: Sendable {
         case closed
         case open

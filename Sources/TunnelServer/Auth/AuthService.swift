@@ -21,7 +21,7 @@ public struct APIKey: Sendable, Hashable {
         self.createdAt = createdAt
         self.expiresAt = expiresAt
     }
-    
+
     /// Checks if the API key is expired
     public var isExpired: Bool {
         guard let expiresAt = expiresAt else {
@@ -73,7 +73,7 @@ public actor AuthService {
     public func listKeys() -> [APIKey] {
         return Array(apiKeys.values)
     }
-    
+
     /// Verifies an API key using HMAC validation
     /// This allows verification without storing keys in memory (stateless)
     /// Uses constant-time comparison to prevent timing attacks
@@ -86,9 +86,9 @@ public actor AuthService {
             using: SymmetricKey(data: Data(secret.utf8))
         )
     }
-    
+
     // MARK: - JWT Token Management
-    
+
     /// Generates a session token for an authenticated tunnel
     public func generateSessionToken(
         tunnelID: UUID,
@@ -104,22 +104,22 @@ public actor AuthService {
                 .compactMap { String(format: "%02x", $0) }
                 .joined()
         )
-        
+
         return try jwtService.generateToken(claims: claims)
     }
-    
+
     /// Validates a session token
     public func validateSessionToken(_ token: String) throws -> JWTService.Claims {
         return try jwtService.validateToken(token)
     }
-    
+
     /// Refreshes a session token
     public func refreshSessionToken(_ token: String, expiresIn: TimeInterval = 86400) throws -> String {
         return try jwtService.refreshToken(token, expiresIn: expiresIn)
     }
-    
+
     // MARK: - Cleanup
-    
+
     /// Removes expired API keys
     public func cleanupExpiredKeys() {
         apiKeys = apiKeys.filter { !$0.value.isExpired }
@@ -140,4 +140,3 @@ extension Data {
         self = data
     }
 }
-

@@ -118,12 +118,12 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
         context: ChannelHandlerContext, eventLoop: EventLoop, head: HTTPRequestHead, body: ByteBuffer
     ) async {
         let clientIP = context.remoteAddress?.ipAddress ?? "unknown"
-        
+
         guard await rateLimiter.tryConsume(identifier: clientIP) else {
             sendResponse(context: context, eventLoop: eventLoop, status: .tooManyRequests, body: "Rate limit exceeded")
             return
         }
-        
+
         do {
             try RequestSizeValidator.validateBodySize(body.readableBytes)
             try RequestSizeValidator.validatePath(head.uri)
@@ -134,7 +134,7 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
             sendResponse(context: context, eventLoop: eventLoop, status: .badRequest, body: "Invalid request")
             return
         }
-        
+
         let subdomain = extractSubdomain(from: head.headers["host"].first ?? "")
 
         logger.debug(

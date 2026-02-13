@@ -87,25 +87,25 @@ final class HTTPHandler: ChannelInboundHandler, @unchecked Sendable {
             let handler = self.requestHandler
             let logger = self.logger
             let wrapOutbound = self.wrapOutboundOut
-            
+
             _ = Task.detached {
                 do {
                     let (responseHead, responseBody) = try await handler.handleRequest(head: head, body: body)
-                    
+
                     eventLoop.execute {
                         context.write(wrapOutbound(.head(responseHead)), promise: nil)
-                        
+
                         if let body = responseBody {
                             context.write(wrapOutbound(.body(.byteBuffer(body))), promise: nil)
                         }
-                        
+
                         context.writeAndFlush(wrapOutbound(.end(nil)), promise: nil)
                     }
                 } catch {
                     logger.error("Request handling failed", metadata: [
                         "error": "\(error.localizedDescription)"
                     ])
-                    
+
                     eventLoop.execute {
                         var headers = HTTPHeaders()
                         headers.add(name: "Content-Length", value: "0")
