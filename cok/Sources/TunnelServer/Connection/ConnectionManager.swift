@@ -135,4 +135,13 @@ public actor ConnectionManager {
     public func connectionCount() -> Int {
         return tunnels.count
     }
+
+    public func disconnectAll() async {
+        let tunnelList = Array(tunnels.values)
+        for tunnel in tunnelList {
+            tunnel.channel.close(promise: nil)
+            unregisterTunnel(id: tunnel.id)
+        }
+        logger.info("All tunnels disconnected", metadata: ["count": "\(tunnelList.count)"])
+    }
 }
