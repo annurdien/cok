@@ -8,7 +8,7 @@ let package = Package(
     ],
     products: [
         .executable(name: "cok-server", targets: ["TunnelServer"]),
-        .executable(name: "cok-client", targets: ["TunnelClient"]),
+        .executable(name: "cok", targets: ["TunnelClient"]),
         .library(name: "TunnelCore", targets: ["TunnelCore"]),
     ],
     dependencies: [
