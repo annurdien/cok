@@ -19,10 +19,14 @@ logger.info(
 
 let connectionManager = ConnectionManager(maxConnections: config.maxTunnels, logger: logger)
 let authService = AuthService(secret: config.apiKeySecret)
+let requestTracker = RequestTracker(timeout: 30.0, logger: logger)
 
-let httpServer = HTTPServer(config: config, logger: logger, connectionManager: connectionManager)
+let httpServer = HTTPServer(
+    config: config, logger: logger, connectionManager: connectionManager,
+    requestTracker: requestTracker)
 let wsServer = WebSocketServer(
-    config: config, logger: logger, connectionManager: connectionManager, authService: authService)
+    config: config, logger: logger, connectionManager: connectionManager, authService: authService,
+    requestTracker: requestTracker)
 
 try await withThrowingTaskGroup(of: Void.self) { group in
     group.addTask {

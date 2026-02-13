@@ -3,17 +3,23 @@ import Logging
 import NIOCore
 import NIOHTTP1
 import NIOPosix
+import TunnelCore
 
 public final class HTTPServer: Sendable {
     private let config: ServerConfig
     private let logger: Logger
     private let group: MultiThreadedEventLoopGroup
     private let connectionManager: ConnectionManager
+    private let requestTracker: RequestTracker
 
-    public init(config: ServerConfig, logger: Logger, connectionManager: ConnectionManager) {
+    public init(
+        config: ServerConfig, logger: Logger, connectionManager: ConnectionManager,
+        requestTracker: RequestTracker
+    ) {
         self.config = config
         self.logger = logger
         self.connectionManager = connectionManager
+        self.requestTracker = requestTracker
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
     }
 
@@ -27,7 +33,8 @@ public final class HTTPServer: Sendable {
                         HTTPRequestHandler(
                             config: self.config,
                             logger: self.logger,
-                            connectionManager: self.connectionManager
+                            connectionManager: self.connectionManager,
+                            requestTracker: self.requestTracker
                         ))
                 }
             }
@@ -57,13 +64,20 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
     private let config: ServerConfig
     private let logger: Logger
     private let connectionManager: ConnectionManager
+    private let requestTracker: RequestTracker
+    private let converter: RequestConverter
     private var requestHead: HTTPRequestHead?
     private var requestBody: ByteBuffer?
 
-    init(config: ServerConfig, logger: Logger, connectionManager: ConnectionManager) {
+    init(
+        config: ServerConfig, logger: Logger, connectionManager: ConnectionManager,
+        requestTracker: RequestTracker
+    ) {
         self.config = config
         self.logger = logger
         self.connectionManager = connectionManager
+        self.requestTracker = requestTracker
+        self.converter = RequestConverter()
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -116,13 +130,76 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
         }
 
         logger.info(
-            "Routing request",
+            "Routing request to tunnel",
             metadata: [
                 "subdomain": "\(subdomain)",
                 "tunnelID": "\(tunnel.id.uuidString.prefix(8))",
             ])
 
-        sendResponse(context: context, status: .ok, body: "Request forwarding - coming soon")
+        do {
+            let remoteAddress = context.remoteAddress?.description ?? "unknown"
+            let protocolRequest = converter.toProtocolMessage(
+                head: head, body: body, remoteAddress: remoteAddress)
+
+            let responsePromise = Task {
+                try await requestTracker.track(requestID: protocolRequest.requestID)
+            }
+
+            try await connectionManager.sendRequest(
+                tunnelID: tunnel.id, request: protocolRequest)
+
+            let response = try await responsePromise.value
+
+            let (responseHead, responseBody) = converter.toHTTPResponse(message: response)
+
+            context.write(wrapOutboundOut(.head(responseHead)), promise: nil)
+
+            if let body = responseBody {
+                context.write(wrapOutboundOut(.body(.byteBuffer(body))), promise: nil)
+            }
+
+            context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
+                context.close(promise: nil)
+            }
+
+            logger.info(
+                "Request completed",
+                metadata: [
+                    "requestID": "\(protocolRequest.requestID.uuidString.prefix(8))",
+                    "status": "\(response.statusCode)",
+                ])
+
+        } catch let error as TunnelError {
+            handleTunnelError(context: context, error: error)
+        } catch {
+            logger.error(
+                "Request forwarding failed",
+                metadata: [
+                    "error": "\(error.localizedDescription)"
+                ])
+            sendResponse(
+                context: context, status: .internalServerError,
+                body: "Internal server error")
+        }
+    }
+
+    private func handleTunnelError(context: ChannelHandlerContext, error: TunnelError) {
+        switch error {
+        case .client(.timeout, _):
+            sendResponse(context: context, status: .gatewayTimeout, body: "Gateway timeout")
+
+        case .server(.tunnelNotFound, _):
+            sendResponse(
+                context: context, status: .serviceUnavailable, body: "Tunnel disconnected")
+
+        case .client(let clientError, _):
+            let status = HTTPResponseStatus(statusCode: 400)
+            sendResponse(
+                context: context, status: status, body: "Client error: \(clientError)")
+
+        default:
+            sendResponse(context: context, status: .badGateway, body: "Bad gateway")
+        }
     }
 
     private func extractSubdomain(from host: String) -> String? {

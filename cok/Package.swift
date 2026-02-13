@@ -26,7 +26,7 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
             ],
             swiftSettings: [
-                .swiftLanguageMode(.v6)
+                .swiftLanguageMode(.v5)
             ]
         ),
 
@@ -65,6 +65,37 @@ let package = Package(
             dependencies: ["TunnelCore"],
             swiftSettings: [
                 .swiftLanguageMode(.v6)
+            ]
+        ),
+
+        .testTarget(
+            name: "TunnelServerTests",
+            dependencies: [
+                "TunnelServer",
+                "TunnelCore",
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOEmbedded", package: "swift-nio"),
+                .product(name: "NIOWebSocket", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "Logging", package: "swift-log"),
+            ],
+            swiftSettings: [
+                .swiftLanguageMode(.v5)
+            ]
+        ),
+
+        .testTarget(
+            name: "TunnelIntegrationTests",
+            dependencies: [
+                "TunnelServer",
+                "TunnelCore",
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOEmbedded", package: "swift-nio"),
+                .product(name: "NIOWebSocket", package: "swift-nio"),
+                .product(name: "Logging", package: "swift-log"),
+            ],
+            swiftSettings: [
+                .swiftLanguageMode(.v5)
             ]
         ),
     ]

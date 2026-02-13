@@ -56,6 +56,12 @@ public struct ProtocolFrame: Sendable, CustomStringConvertible {
         buffer.writeInteger(crc, endianness: .little)
     }
 
+    public func encode() -> ByteBuffer {
+        var buffer = ByteBufferAllocator().buffer(capacity: Self.headerSize + payload.readableBytes)
+        encode(into: &buffer)
+        return buffer
+    }
+
     public static func decode(from buffer: inout ByteBuffer) throws -> ProtocolFrame {
         guard buffer.readableBytes >= headerSize else {
             throw ProtocolError.insufficientData(expected: headerSize, got: buffer.readableBytes)
