@@ -8,3 +8,5 @@ DerivedData/
 *.swp
 *~
 .idea/
+*.log
+documentation/
