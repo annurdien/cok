@@ -7,13 +7,10 @@ Expose local web servers to the internet via public URLs.
 ```bash
 cok --port 8080
 
-# With custom subdomain
 cok --port 8080 --subdomain myapp
 
-# With API key
 cok --port 8080 --subdomain myapp --api-key YOUR_KEY
 
-# Short flags
 cok -p 8080
 cok -p 8080 -s myapp
 ```
