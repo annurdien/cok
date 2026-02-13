@@ -30,7 +30,7 @@ jobs:
             ${{ runner.os }}-swift-
 
       - name: Build
-        run: swift build -c release
+        run: swift build --build-tests
 
       - name: Run Tests
         run: swift test --parallel
@@ -52,7 +52,7 @@ jobs:
             ${{ runner.os }}-swift-
 
       - name: Build
-        run: swift build -c release
+        run: swift build --build-tests
 
       - name: Run Tests
         run: swift test --parallel
