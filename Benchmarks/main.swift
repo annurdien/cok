@@ -1,6 +1,9 @@
 import Foundation
 import NIOCore
 import TunnelCore
+#if os(Linux)
+import Glibc
+#endif
 
 struct Benchmark {
     let name: String
@@ -20,11 +23,11 @@ struct Benchmark {
             try await operation()
         }
 
-        let start = CFAbsoluteTimeGetCurrent()
+        let start = currentTime()
         for _ in 0..<iterations {
             try await operation()
         }
-        let elapsed = CFAbsoluteTimeGetCurrent() - start
+        let elapsed = currentTime() - start
 
         return BenchmarkResult(
             name: name,
@@ -33,6 +36,12 @@ struct Benchmark {
             averageTime: elapsed / Double(iterations),
             opsPerSecond: Double(iterations) / elapsed
         )
+    }
+
+    private func currentTime() -> Double {
+        var time = timespec()
+        clock_gettime(CLOCK_MONOTONIC, &time)
+        return Double(time.tv_sec) + Double(time.tv_nsec) / 1_000_000_000
     }
 }
 

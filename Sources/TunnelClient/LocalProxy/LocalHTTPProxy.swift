@@ -87,19 +87,20 @@ final class HTTPHandler: ChannelInboundHandler, @unchecked Sendable {
             let handler = self.requestHandler
             let logger = self.logger
             let wrapOutbound = self.wrapOutboundOut
+            nonisolated(unsafe) let ctx = context
 
-            _ = Task.detached {
+            _ = Task.detached { @Sendable in
                 do {
                     let (responseHead, responseBody) = try await handler.handleRequest(head: head, body: body)
 
                     eventLoop.execute {
-                        context.write(wrapOutbound(.head(responseHead)), promise: nil)
+                        ctx.write(wrapOutbound(.head(responseHead)), promise: nil)
 
                         if let body = responseBody {
-                            context.write(wrapOutbound(.body(.byteBuffer(body))), promise: nil)
+                            ctx.write(wrapOutbound(.body(.byteBuffer(body))), promise: nil)
                         }
 
-                        context.writeAndFlush(wrapOutbound(.end(nil)), promise: nil)
+                        ctx.writeAndFlush(wrapOutbound(.end(nil)), promise: nil)
                     }
                 } catch {
                     logger.error("Request handling failed", metadata: [
@@ -111,9 +112,9 @@ final class HTTPHandler: ChannelInboundHandler, @unchecked Sendable {
                         headers.add(name: "Content-Length", value: "0")
                         headers.add(name: "Connection", value: "close")
                         let head = HTTPResponseHead(version: .http1_1, status: .internalServerError, headers: headers)
-                        context.write(wrapOutbound(.head(head)), promise: nil)
-                        context.writeAndFlush(wrapOutbound(.end(nil))).whenComplete { [context] _ in
-                            context.close(promise: nil)
+                        ctx.write(wrapOutbound(.head(head)), promise: nil)
+                        ctx.writeAndFlush(wrapOutbound(.end(nil))).whenComplete { _ in
+                            ctx.close(promise: nil)
                         }
                     }
                 }
@@ -125,6 +126,8 @@ final class HTTPHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     private nonisolated func sendError(context: ChannelHandlerContext, status: HTTPResponseStatus) {
+        nonisolated(unsafe) let ctx = context
+        let wrapOut = self.wrapOutboundOut
         context.eventLoop.execute {
             var headers = HTTPHeaders()
             headers.add(name: "Content-Length", value: "0")
@@ -132,9 +135,9 @@ final class HTTPHandler: ChannelInboundHandler, @unchecked Sendable {
 
             let head = HTTPResponseHead(version: .http1_1, status: status, headers: headers)
 
-            context.write(self.wrapOutboundOut(.head(head)), promise: nil)
-            context.writeAndFlush(self.wrapOutboundOut(.end(nil))).whenComplete { [context] _ in
-                context.close(promise: nil)
+            ctx.write(wrapOut(.head(head)), promise: nil)
+            ctx.writeAndFlush(wrapOut(.end(nil))).whenComplete { _ in
+                ctx.close(promise: nil)
             }
         }
     }

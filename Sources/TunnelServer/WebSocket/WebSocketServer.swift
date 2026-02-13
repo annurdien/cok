@@ -124,11 +124,10 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
 
         switch frame.opcode {
         case .binary:
-            let ctx = context
+            nonisolated(unsafe) let ctx = context
             let eventLoop = context.eventLoop
-            let handler = self
-            Task {
-                await handler.handleBinaryFrame(context: ctx, eventLoop: eventLoop, frame: frame)
+            Task { @Sendable in
+                await self.handleBinaryFrame(context: ctx, eventLoop: eventLoop, frame: frame)
             }
 
         case .text:
@@ -207,7 +206,8 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
 
         guard await rateLimiter.tryConsume(identifier: clientIP) else {
             try await sendError(context: context, eventLoop: eventLoop, code: 429, message: "Rate limit exceeded")
-            eventLoop.execute { context.close(promise: nil) }
+            nonisolated(unsafe) let ctx = context
+            eventLoop.execute { ctx.close(promise: nil) }
             return
         }
 
@@ -216,8 +216,9 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
         let isValid = await authService.validateAPIKey(request.apiKey) != nil
         guard isValid else {
             try await sendError(context: context, eventLoop: eventLoop, code: 401, message: "Invalid API key")
+            nonisolated(unsafe) let ctx = context
             eventLoop.execute {
-                context.close(promise: nil)
+                ctx.close(promise: nil)
             }
             return
         }
@@ -227,7 +228,8 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
         if let requested = request.requestedSubdomain {
             if !SubdomainValidator.isValid(requested) {
                 try await sendError(context: context, eventLoop: eventLoop, code: 400, message: "Invalid subdomain format")
-                eventLoop.execute { context.close(promise: nil) }
+                nonisolated(unsafe) let ctx = context
+                eventLoop.execute { ctx.close(promise: nil) }
                 return
             }
             subdomain = requested
@@ -257,10 +259,12 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
             payload: responsePayload
         )
 
-        let frameData = try responseFrame.encode()
+        let frameData = responseFrame.encode()
         let wsFrame = WebSocketFrame(fin: true, opcode: .binary, data: frameData)
+        nonisolated(unsafe) let ctx = context
+        let wrapOut = self.wrapOutboundOut
         eventLoop.execute {
-            context.writeAndFlush(self.wrapOutboundOut(wsFrame), promise: nil)
+            ctx.writeAndFlush(wrapOut(wsFrame), promise: nil)
         }
 
         logger.info(
@@ -283,7 +287,7 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
             payload: pongPayload
         )
 
-        let frameData = try pongFrame.encode()
+        let frameData = pongFrame.encode()
         let wsFrame = WebSocketFrame(fin: true, opcode: .binary, data: frameData)
         context.writeAndFlush(wrapOutboundOut(wsFrame), promise: nil)
     }
@@ -299,10 +303,12 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
             payload: payload
         )
 
-        let frameData = try frame.encode()
+        let frameData = frame.encode()
         let wsFrame = WebSocketFrame(fin: true, opcode: .binary, data: frameData)
+        nonisolated(unsafe) let ctx = context
+        let wrapOut = self.wrapOutboundOut
         eventLoop.execute {
-            context.writeAndFlush(self.wrapOutboundOut(wsFrame), promise: nil)
+            ctx.writeAndFlush(wrapOut(wsFrame), promise: nil)
         }
     }
 

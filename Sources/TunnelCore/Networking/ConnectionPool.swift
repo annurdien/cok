@@ -77,7 +77,6 @@ public actor ConnectionPool {
     }
 
     public func evictExpired() {
-        let now = Date()
         for (key, pooledConns) in connections {
             let valid = pooledConns.filter { !$0.isExpired(maxIdleTime: config.maxIdleTime) && $0.channel.isActive }
             if valid.isEmpty {

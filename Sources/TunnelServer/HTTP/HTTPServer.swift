@@ -103,10 +103,10 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
             }
 
             let body = requestBody ?? ByteBuffer()
-            let ctx = context
+            nonisolated(unsafe) let ctx = context
             let eventLoop = context.eventLoop
             let handler = self
-            Task {
+            Task { @Sendable in
                 await handler.handleRequest(context: ctx, eventLoop: eventLoop, head: head, body: body)
             }
             requestHead = nil
@@ -179,15 +179,17 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
 
             let (responseHead, responseBody) = converter.toHTTPResponse(message: response)
 
+            nonisolated(unsafe) let ctx = context
+            let wrapOut = self.wrapOutboundOut
             eventLoop.execute {
-                context.write(self.wrapOutboundOut(.head(responseHead)), promise: nil)
+                ctx.write(wrapOut(.head(responseHead)), promise: nil)
 
                 if let body = responseBody {
-                    context.write(self.wrapOutboundOut(.body(.byteBuffer(body))), promise: nil)
+                    ctx.write(wrapOut(.body(.byteBuffer(body))), promise: nil)
                 }
 
-                context.writeAndFlush(self.wrapOutboundOut(.end(nil))).whenComplete { [context] _ in
-                    context.close(promise: nil)
+                ctx.writeAndFlush(wrapOut(.end(nil))).whenComplete { _ in
+                    ctx.close(promise: nil)
                 }
             }
 
@@ -241,6 +243,8 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
     private func sendResponse(
         context: ChannelHandlerContext, eventLoop: EventLoop, status: HTTPResponseStatus, body: String
     ) {
+        nonisolated(unsafe) let ctx = context
+        let wrapOut = self.wrapOutboundOut
         context.eventLoop.execute {
             var headers = HTTPHeaders()
             headers.add(name: "Content-Type", value: "text/plain; charset=utf-8")
@@ -248,14 +252,14 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
             headers.add(name: "Connection", value: "close")
 
             let head = HTTPResponseHead(version: .http1_1, status: status, headers: headers)
-            context.write(self.wrapOutboundOut(.head(head)), promise: nil)
+            ctx.write(wrapOut(.head(head)), promise: nil)
 
-            var buffer = context.channel.allocator.buffer(capacity: body.utf8.count)
+            var buffer = ctx.channel.allocator.buffer(capacity: body.utf8.count)
             buffer.writeString(body)
-            context.write(self.wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
+            ctx.write(wrapOut(.body(.byteBuffer(buffer))), promise: nil)
 
-            context.writeAndFlush(self.wrapOutboundOut(.end(nil))).whenComplete { _ in
-                context.close(promise: nil)
+            ctx.writeAndFlush(wrapOut(.end(nil))).whenComplete { _ in
+                ctx.close(promise: nil)
             }
         }
     }

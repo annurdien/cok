@@ -57,7 +57,7 @@ public actor LocalRequestHandler {
             try await withCheckedThrowingContinuation { continuation in
                 Task {
                     do {
-                        await self.storeContinuation(requestID: requestID, continuation: continuation)
+                        self.storeContinuation(requestID: requestID, continuation: continuation)
 
                         let payload = try JSONEncoder().encode(request)
                         var buffer = ByteBufferAllocator().buffer(capacity: payload.count)
@@ -81,7 +81,7 @@ public actor LocalRequestHandler {
                         Task {
                             try await Task.sleep(for: .seconds(self.config.requestTimeout))
 
-                            if let storedContinuation = await self.removeContinuation(requestID: requestID) {
+                            if let storedContinuation = self.removeContinuation(requestID: requestID) {
                                 self.logger.warning("Request timeout", metadata: [
                                     "requestID": "\(requestID.uuidString.prefix(8))"
                                 ])
@@ -94,7 +94,7 @@ public actor LocalRequestHandler {
                             }
                         }
                     } catch {
-                        await self.removeContinuation(requestID: requestID)
+                        _ = self.removeContinuation(requestID: requestID)
                         continuation.resume(throwing: error)
                     }
                 }
