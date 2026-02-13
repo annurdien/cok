@@ -12,10 +12,10 @@ let package = Package(
         .library(name: "TunnelCore", targets: ["TunnelCore"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
-        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
-        .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
-        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.94.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.7.0"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.9.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "4.2.0"),
     ],
     targets: [
         .target(
@@ -24,9 +24,6 @@ let package = Package(
                 .product(name: "NIO", package: "swift-nio"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "Logging", package: "swift-log"),
-            ],
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
             ]
         ),
 
@@ -40,12 +37,6 @@ let package = Package(
                 .product(name: "NIOWebSocket", package: "swift-nio"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "Crypto", package: "swift-crypto"),
-            ],
-            swiftSettings: [
-                .swiftLanguageMode(.v5),
-                .unsafeFlags([
-                    "-Xfrontend", "-strict-concurrency=complete", "-Xfrontend", "-warn-concurrency",
-                ]),
             ]
         ),
 
@@ -54,18 +45,17 @@ let package = Package(
             dependencies: [
                 "TunnelCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ],
-            swiftSettings: [
-                .swiftLanguageMode(.v6)
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "NIOWebSocket", package: "swift-nio"),
+                .product(name: "Logging", package: "swift-log"),
             ]
         ),
 
         .testTarget(
             name: "TunnelCoreTests",
-            dependencies: ["TunnelCore"],
-            swiftSettings: [
-                .swiftLanguageMode(.v6)
-            ]
+            dependencies: ["TunnelCore"]
         ),
 
         .testTarget(
@@ -78,9 +68,15 @@ let package = Package(
                 .product(name: "NIOWebSocket", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
                 .product(name: "Logging", package: "swift-log"),
-            ],
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
+            ]
+        ),
+
+        .testTarget(
+            name: "TunnelClientTests",
+            dependencies: [
+                "TunnelClient",
+                "TunnelCore",
+                .product(name: "Logging", package: "swift-log"),
             ]
         ),
 
@@ -93,9 +89,6 @@ let package = Package(
                 .product(name: "NIOEmbedded", package: "swift-nio"),
                 .product(name: "NIOWebSocket", package: "swift-nio"),
                 .product(name: "Logging", package: "swift-log"),
-            ],
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
             ]
         ),
     ]

@@ -1,8 +1,8 @@
 import Foundation
 import Logging
-import NIOCore
-import NIOHTTP1
-import NIOPosix
+@preconcurrency import NIOCore
+@preconcurrency import NIOHTTP1
+@preconcurrency import NIOPosix
 import TunnelCore
 
 public final class HTTPServer: Sendable {
@@ -97,8 +97,12 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
                 return
             }
 
+            let body = requestBody ?? ByteBuffer()
+            let ctx = context
+            let eventLoop = context.eventLoop
+            let handler = self
             Task {
-                await handleRequest(context: context, head: head, body: requestBody ?? ByteBuffer())
+                await handler.handleRequest(context: ctx, eventLoop: eventLoop, head: head, body: body)
             }
             requestHead = nil
             requestBody = nil
@@ -106,7 +110,7 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     private func handleRequest(
-        context: ChannelHandlerContext, head: HTTPRequestHead, body: ByteBuffer
+        context: ChannelHandlerContext, eventLoop: EventLoop, head: HTTPRequestHead, body: ByteBuffer
     ) async {
         let subdomain = extractSubdomain(from: head.headers["host"].first ?? "")
 
@@ -119,13 +123,13 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
             ])
 
         guard let subdomain = subdomain else {
-            sendResponse(context: context, status: .notFound, body: "Invalid host")
+            sendResponse(context: context, eventLoop: eventLoop, status: .notFound, body: "Invalid host")
             return
         }
 
         guard let tunnel = await connectionManager.getTunnel(forSubdomain: subdomain) else {
             sendResponse(
-                context: context, status: .notFound, body: "Tunnel not found: \(subdomain)")
+                context: context, eventLoop: eventLoop, status: .notFound, body: "Tunnel not found: \(subdomain)")
             return
         }
 
@@ -152,14 +156,16 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
 
             let (responseHead, responseBody) = converter.toHTTPResponse(message: response)
 
-            context.write(wrapOutboundOut(.head(responseHead)), promise: nil)
+            eventLoop.execute {
+                context.write(self.wrapOutboundOut(.head(responseHead)), promise: nil)
 
-            if let body = responseBody {
-                context.write(wrapOutboundOut(.body(.byteBuffer(body))), promise: nil)
-            }
+                if let body = responseBody {
+                    context.write(self.wrapOutboundOut(.body(.byteBuffer(body))), promise: nil)
+                }
 
-            context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
-                context.close(promise: nil)
+                context.writeAndFlush(self.wrapOutboundOut(.end(nil))).whenComplete { [context] _ in
+                    context.close(promise: nil)
+                }
             }
 
             logger.info(
@@ -170,7 +176,7 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
                 ])
 
         } catch let error as TunnelError {
-            handleTunnelError(context: context, error: error)
+            handleTunnelError(context: context, eventLoop: eventLoop, error: error)
         } catch {
             logger.error(
                 "Request forwarding failed",
@@ -178,27 +184,27 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
                     "error": "\(error.localizedDescription)"
                 ])
             sendResponse(
-                context: context, status: .internalServerError,
+                context: context, eventLoop: eventLoop, status: .internalServerError,
                 body: "Internal server error")
         }
     }
 
-    private func handleTunnelError(context: ChannelHandlerContext, error: TunnelError) {
+    private func handleTunnelError(context: ChannelHandlerContext, eventLoop: EventLoop, error: TunnelError) {
         switch error {
         case .client(.timeout, _):
-            sendResponse(context: context, status: .gatewayTimeout, body: "Gateway timeout")
+            sendResponse(context: context, eventLoop: eventLoop, status: .gatewayTimeout, body: "Gateway timeout")
 
         case .server(.tunnelNotFound, _):
             sendResponse(
-                context: context, status: .serviceUnavailable, body: "Tunnel disconnected")
+                context: context, eventLoop: eventLoop, status: .serviceUnavailable, body: "Tunnel disconnected")
 
         case .client(let clientError, _):
             let status = HTTPResponseStatus(statusCode: 400)
             sendResponse(
-                context: context, status: status, body: "Client error: \(clientError)")
+                context: context, eventLoop: eventLoop, status: status, body: "Client error: \(clientError)")
 
         default:
-            sendResponse(context: context, status: .badGateway, body: "Bad gateway")
+            sendResponse(context: context, eventLoop: eventLoop, status: .badGateway, body: "Bad gateway")
         }
     }
 
@@ -210,22 +216,24 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     private func sendResponse(
-        context: ChannelHandlerContext, status: HTTPResponseStatus, body: String
+        context: ChannelHandlerContext, eventLoop: EventLoop, status: HTTPResponseStatus, body: String
     ) {
-        var headers = HTTPHeaders()
-        headers.add(name: "Content-Type", value: "text/plain; charset=utf-8")
-        headers.add(name: "Content-Length", value: "\(body.utf8.count)")
-        headers.add(name: "Connection", value: "close")
+        context.eventLoop.execute {
+            var headers = HTTPHeaders()
+            headers.add(name: "Content-Type", value: "text/plain; charset=utf-8")
+            headers.add(name: "Content-Length", value: "\(body.utf8.count)")
+            headers.add(name: "Connection", value: "close")
 
-        let head = HTTPResponseHead(version: .http1_1, status: status, headers: headers)
-        context.write(wrapOutboundOut(.head(head)), promise: nil)
+            let head = HTTPResponseHead(version: .http1_1, status: status, headers: headers)
+            context.write(self.wrapOutboundOut(.head(head)), promise: nil)
 
-        var buffer = context.channel.allocator.buffer(capacity: body.utf8.count)
-        buffer.writeString(body)
-        context.write(wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
+            var buffer = context.channel.allocator.buffer(capacity: body.utf8.count)
+            buffer.writeString(body)
+            context.write(self.wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
 
-        context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
-            context.close(promise: nil)
+            context.writeAndFlush(self.wrapOutboundOut(.end(nil))).whenComplete { _ in
+                context.close(promise: nil)
+            }
         }
     }
 }

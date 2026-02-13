@@ -4,7 +4,7 @@ import NIOCore
 @testable import TunnelCore
 @testable import TunnelServer
 
-final class RequestTrackerTests: XCTestCase {
+final class RequestTrackerTests: XCTestCase, @unchecked Sendable {
     var tracker: RequestTracker!
     var logger: Logger!
 

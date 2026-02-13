@@ -1,9 +1,9 @@
 import Foundation
 import Logging
-import NIOCore
-import NIOHTTP1
-import NIOPosix
-import NIOWebSocket
+@preconcurrency import NIOCore
+@preconcurrency import NIOHTTP1
+@preconcurrency import NIOPosix
+@preconcurrency import NIOWebSocket
 import TunnelCore
 
 public final class WebSocketServer: Sendable {
@@ -119,8 +119,11 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
 
         switch frame.opcode {
         case .binary:
+            let ctx = context
+            let eventLoop = context.eventLoop
+            let handler = self
             Task {
-                await handleBinaryFrame(context: context, frame: frame)
+                await handler.handleBinaryFrame(context: ctx, eventLoop: eventLoop, frame: frame)
             }
 
         case .text:
@@ -143,7 +146,7 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
         }
     }
 
-    private func handleBinaryFrame(context: ChannelHandlerContext, frame: WebSocketFrame) async {
+    private func handleBinaryFrame(context: ChannelHandlerContext, eventLoop: EventLoop, frame: WebSocketFrame) async {
         do {
             var data = frame.unmaskedData
             let protocolFrame = try ProtocolFrame.decode(from: &data)
@@ -163,7 +166,7 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
 
             case .connectRequest:
                 try await handleConnectRequest(
-                    context: context, payload: protocolFrame.payload)
+                    context: context, eventLoop: eventLoop, payload: protocolFrame.payload)
 
             case .ping:
                 try handlePing(context: context, payload: protocolFrame.payload)
@@ -193,15 +196,17 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
         }
     }
 
-    private func handleConnectRequest(context: ChannelHandlerContext, payload: ByteBuffer) async
+    private func handleConnectRequest(context: ChannelHandlerContext, eventLoop: EventLoop, payload: ByteBuffer) async
         throws
     {
         let request = try codec.decode(ConnectRequest.self, from: payload)
 
         let isValid = await authService.validateAPIKey(request.apiKey) != nil
         guard isValid else {
-            try await sendError(context: context, code: 401, message: "Invalid API key")
-            context.close(promise: nil)
+            try await sendError(context: context, eventLoop: eventLoop, code: 401, message: "Invalid API key")
+            eventLoop.execute {
+                context.close(promise: nil)
+            }
             return
         }
 
@@ -233,7 +238,9 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
 
         let frameData = try responseFrame.encode()
         let wsFrame = WebSocketFrame(fin: true, opcode: .binary, data: frameData)
-        context.writeAndFlush(wrapOutboundOut(wsFrame), promise: nil)
+        eventLoop.execute {
+            context.writeAndFlush(self.wrapOutboundOut(wsFrame), promise: nil)
+        }
 
         logger.info(
             "Tunnel established",
@@ -260,7 +267,7 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
         context.writeAndFlush(wrapOutboundOut(wsFrame), promise: nil)
     }
 
-    private func sendError(context: ChannelHandlerContext, code: UInt16, message: String) async
+    private func sendError(context: ChannelHandlerContext, eventLoop: EventLoop, code: UInt16, message: String) async
         throws
     {
         let errorMsg = ErrorMessage(code: code, message: message)
@@ -274,7 +281,9 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
 
         let frameData = try frame.encode()
         let wsFrame = WebSocketFrame(fin: true, opcode: .binary, data: frameData)
-        context.writeAndFlush(wrapOutboundOut(wsFrame), promise: nil)
+        eventLoop.execute {
+            context.writeAndFlush(self.wrapOutboundOut(wsFrame), promise: nil)
+        }
     }
 
     private func handleTextFrame(context: ChannelHandlerContext, frame: WebSocketFrame) {
