@@ -91,5 +91,14 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
             ]
         ),
+
+        .executableTarget(
+            name: "Benchmarks",
+            dependencies: [
+                "TunnelCore",
+                .product(name: "NIOCore", package: "swift-nio"),
+            ],
+            path: "Benchmarks"
+        ),
     ]
 )

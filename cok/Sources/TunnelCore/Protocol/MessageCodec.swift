@@ -3,7 +3,7 @@ import NIOCore
 
 public protocol MessageCodec: Sendable {
     func encode<T: Encodable & Sendable>(_ message: T) throws -> ByteBuffer
-
+    func encode<T: Encodable & Sendable>(_ message: T, into buffer: inout ByteBuffer) throws
     func decode<T: Decodable & Sendable>(_ type: T.Type, from buffer: ByteBuffer) throws -> T
 }
 
@@ -14,7 +14,6 @@ public struct JSONMessageCodec: MessageCodec {
     public init() {
         self.encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-
         self.decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
     }
@@ -25,18 +24,21 @@ public struct JSONMessageCodec: MessageCodec {
         buffer.writeBytes(data)
         return buffer
     }
+    
+    public func encode<T: Encodable & Sendable>(_ message: T, into buffer: inout ByteBuffer) throws {
+        let data = try encoder.encode(message)
+        buffer.writeBytes(data)
+    }
 
-    public func decode<T: Decodable & Sendable>(_ type: T.Type, from buffer: ByteBuffer) throws -> T
-    {
-        guard let data = buffer.getBytes(at: buffer.readerIndex, length: buffer.readableBytes)
-        else {
-            throw CodecError.invalidData
+    public func decode<T: Decodable & Sendable>(_ type: T.Type, from buffer: ByteBuffer) throws -> T {
+        return try buffer.withUnsafeReadableBytes { pointer in
+            try decoder.decode(type, from: Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: pointer.baseAddress!), 
+                                                 count: pointer.count, 
+                                                 deallocator: .none))
         }
-        return try decoder.decode(type, from: Data(data))
     }
 }
 
-/// Codec errors
 public enum CodecError: Error, Sendable, CustomStringConvertible {
     case invalidData
     case encodingFailed(any Error)
@@ -44,12 +46,9 @@ public enum CodecError: Error, Sendable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .invalidData:
-            return "Invalid data"
-        case .encodingFailed(let error):
-            return "Encoding failed: \(error)"
-        case .decodingFailed(let error):
-            return "Decoding failed: \(error)"
+        case .invalidData: return "Invalid data"
+        case .encodingFailed(let error): return "Encoding failed: \(error)"
+        case .decodingFailed(let error): return "Decoding failed: \(error)"
         }
     }
 }
