@@ -4,28 +4,25 @@ import PackageDescription
 let package = Package(
     name: "cok",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v14)
     ],
     products: [
-        .executable(name: "cok", targets: ["TunnelClient"]),
         .executable(name: "cok-server", targets: ["TunnelServer"]),
+        .executable(name: "cok-client", targets: ["TunnelClient"]),
         .library(name: "TunnelCore", targets: ["TunnelCore"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
     ],
     targets: [
-        // Core shared library
         .target(
             name: "TunnelCore",
             dependencies: [
                 .product(name: "NIO", package: "swift-nio"),
                 .product(name: "NIOCore", package: "swift-nio"),
-                .product(name: "NIOPosix", package: "swift-nio"),
-                .product(name: "NIOHTTP1", package: "swift-nio"),
-                .product(name: "NIOWebSocket", package: "swift-nio"),
                 .product(name: "Logging", package: "swift-log"),
             ],
             swiftSettings: [
@@ -33,16 +30,22 @@ let package = Package(
             ]
         ),
 
-        // Server executable
         .executableTarget(
             name: "TunnelServer",
-            dependencies: ["TunnelCore"],
+            dependencies: [
+                "TunnelCore",
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "NIOWebSocket", package: "swift-nio"),
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "Crypto", package: "swift-crypto"),
+            ],
             swiftSettings: [
                 .swiftLanguageMode(.v6)
             ]
         ),
 
-        // Client executable
         .executableTarget(
             name: "TunnelClient",
             dependencies: [
@@ -54,7 +57,6 @@ let package = Package(
             ]
         ),
 
-        // Tests
         .testTarget(
             name: "TunnelCoreTests",
             dependencies: ["TunnelCore"],
