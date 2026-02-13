@@ -7,7 +7,7 @@ import NIOWebSocket
 @testable import TunnelCore
 @testable import TunnelServer
 
-final class ServerIntegrationTests: XCTestCase {
+final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
     var connectionManager: ConnectionManager!
     var requestTracker: RequestTracker!
     var logger: Logger!
