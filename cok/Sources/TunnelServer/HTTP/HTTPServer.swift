@@ -8,10 +8,12 @@ public final class HTTPServer: Sendable {
     private let config: ServerConfig
     private let logger: Logger
     private let group: MultiThreadedEventLoopGroup
+    private let connectionManager: ConnectionManager
 
-    public init(config: ServerConfig, logger: Logger) {
+    public init(config: ServerConfig, logger: Logger, connectionManager: ConnectionManager) {
         self.config = config
         self.logger = logger
+        self.connectionManager = connectionManager
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
     }
 
@@ -24,7 +26,8 @@ public final class HTTPServer: Sendable {
                     channel.pipeline.addHandler(
                         HTTPRequestHandler(
                             config: self.config,
-                            logger: self.logger
+                            logger: self.logger,
+                            connectionManager: self.connectionManager
                         ))
                 }
             }
@@ -53,12 +56,14 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
 
     private let config: ServerConfig
     private let logger: Logger
+    private let connectionManager: ConnectionManager
     private var requestHead: HTTPRequestHead?
     private var requestBody: ByteBuffer?
 
-    init(config: ServerConfig, logger: Logger) {
+    init(config: ServerConfig, logger: Logger, connectionManager: ConnectionManager) {
         self.config = config
         self.logger = logger
+        self.connectionManager = connectionManager
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -78,7 +83,9 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
                 return
             }
 
-            handleRequest(context: context, head: head, body: requestBody ?? ByteBuffer())
+            Task {
+                await handleRequest(context: context, head: head, body: requestBody ?? ByteBuffer())
+            }
             requestHead = nil
             requestBody = nil
         }
@@ -86,7 +93,7 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
 
     private func handleRequest(
         context: ChannelHandlerContext, head: HTTPRequestHead, body: ByteBuffer
-    ) {
+    ) async {
         let subdomain = extractSubdomain(from: head.headers["host"].first ?? "")
 
         logger.debug(
@@ -97,12 +104,25 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
                 "subdomain": "\(subdomain ?? "none")",
             ])
 
-        if subdomain == nil {
-            sendResponse(context: context, status: .notFound, body: "Tunnel not found")
+        guard let subdomain = subdomain else {
+            sendResponse(context: context, status: .notFound, body: "Invalid host")
             return
         }
 
-        sendResponse(context: context, status: .ok, body: "Tunnel routing - coming soon")
+        guard let tunnel = await connectionManager.getTunnel(forSubdomain: subdomain) else {
+            sendResponse(
+                context: context, status: .notFound, body: "Tunnel not found: \(subdomain)")
+            return
+        }
+
+        logger.info(
+            "Routing request",
+            metadata: [
+                "subdomain": "\(subdomain)",
+                "tunnelID": "\(tunnel.id.uuidString.prefix(8))",
+            ])
+
+        sendResponse(context: context, status: .ok, body: "Request forwarding - coming soon")
     }
 
     private func extractSubdomain(from host: String) -> String? {

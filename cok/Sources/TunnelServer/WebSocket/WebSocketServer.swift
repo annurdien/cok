@@ -9,10 +9,17 @@ public final class WebSocketServer: Sendable {
     private let config: ServerConfig
     private let logger: Logger
     private let group: MultiThreadedEventLoopGroup
+    private let connectionManager: ConnectionManager
+    private let authService: AuthService
 
-    public init(config: ServerConfig, logger: Logger) {
+    public init(
+        config: ServerConfig, logger: Logger, connectionManager: ConnectionManager,
+        authService: AuthService
+    ) {
         self.config = config
         self.logger = logger
+        self.connectionManager = connectionManager
+        self.authService = authService
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
     }
 
@@ -29,7 +36,9 @@ public final class WebSocketServer: Sendable {
                         channel.pipeline.addHandler(
                             WebSocketHandler(
                                 config: self.config,
-                                logger: self.logger
+                                logger: self.logger,
+                                connectionManager: self.connectionManager,
+                                authService: self.authService
                             )
                         )
                     }
@@ -66,10 +75,18 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
 
     private let config: ServerConfig
     private let logger: Logger
+    private let connectionManager: ConnectionManager
+    private let authService: AuthService
+    private var tunnelID: UUID?
 
-    init(config: ServerConfig, logger: Logger) {
+    init(
+        config: ServerConfig, logger: Logger, connectionManager: ConnectionManager,
+        authService: AuthService
+    ) {
         self.config = config
         self.logger = logger
+        self.connectionManager = connectionManager
+        self.authService = authService
     }
 
     func channelActive(context: ChannelHandlerContext) {
@@ -81,6 +98,11 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     func channelInactive(context: ChannelHandlerContext) {
+        if let tunnelID = tunnelID {
+            Task {
+                await connectionManager.unregisterTunnel(id: tunnelID)
+            }
+        }
         logger.info("WebSocket client disconnected")
     }
 
@@ -89,7 +111,9 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
 
         switch frame.opcode {
         case .binary:
-            handleBinaryFrame(context: context, frame: frame)
+            Task {
+                await handleBinaryFrame(context: context, frame: frame)
+            }
 
         case .text:
             handleTextFrame(context: context, frame: frame)
@@ -111,7 +135,7 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
         }
     }
 
-    private func handleBinaryFrame(context: ChannelHandlerContext, frame: WebSocketFrame) {
+    private func handleBinaryFrame(context: ChannelHandlerContext, frame: WebSocketFrame) async {
         let data = frame.unmaskedData
         logger.debug(
             "Received binary frame",

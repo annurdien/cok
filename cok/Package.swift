@@ -42,7 +42,10 @@ let package = Package(
                 .product(name: "Crypto", package: "swift-crypto"),
             ],
             swiftSettings: [
-                .swiftLanguageMode(.v6)
+                .swiftLanguageMode(.v5),
+                .unsafeFlags([
+                    "-Xfrontend", "-strict-concurrency=complete", "-Xfrontend", "-warn-concurrency",
+                ]),
             ]
         ),
 
