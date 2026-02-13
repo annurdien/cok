@@ -13,16 +13,18 @@ public final class WebSocketServer: Sendable {
     private let connectionManager: ConnectionManager
     private let authService: AuthService
     private let requestTracker: RequestTracker
+    private let rateLimiter: RateLimiter
 
     public init(
         config: ServerConfig, logger: Logger, connectionManager: ConnectionManager,
-        authService: AuthService, requestTracker: RequestTracker
+        authService: AuthService, requestTracker: RequestTracker, rateLimiter: RateLimiter
     ) {
         self.config = config
         self.logger = logger
         self.connectionManager = connectionManager
         self.authService = authService
         self.requestTracker = requestTracker
+        self.rateLimiter = rateLimiter
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
     }
 
@@ -42,7 +44,8 @@ public final class WebSocketServer: Sendable {
                                 logger: self.logger,
                                 connectionManager: self.connectionManager,
                                 authService: self.authService,
-                                requestTracker: self.requestTracker
+                                requestTracker: self.requestTracker,
+                                rateLimiter: self.rateLimiter
                             )
                         )
                     }
@@ -82,18 +85,20 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
     private let connectionManager: ConnectionManager
     private let authService: AuthService
     private let requestTracker: RequestTracker
+    private let rateLimiter: RateLimiter
     private let codec: MessageCodec
     private var tunnelID: UUID?
 
     init(
         config: ServerConfig, logger: Logger, connectionManager: ConnectionManager,
-        authService: AuthService, requestTracker: RequestTracker
+        authService: AuthService, requestTracker: RequestTracker, rateLimiter: RateLimiter
     ) {
         self.config = config
         self.logger = logger
         self.connectionManager = connectionManager
         self.authService = authService
         self.requestTracker = requestTracker
+        self.rateLimiter = rateLimiter
         self.codec = JSONMessageCodec()
     }
 
@@ -199,6 +204,14 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
     private func handleConnectRequest(context: ChannelHandlerContext, eventLoop: EventLoop, payload: ByteBuffer) async
         throws
     {
+        let clientIP = context.remoteAddress?.ipAddress ?? "unknown"
+        
+        guard await rateLimiter.tryConsume(identifier: clientIP) else {
+            try await sendError(context: context, eventLoop: eventLoop, code: 429, message: "Rate limit exceeded")
+            eventLoop.execute { context.close(promise: nil) }
+            return
+        }
+        
         let request = try codec.decode(ConnectRequest.self, from: payload)
 
         let isValid = await authService.validateAPIKey(request.apiKey) != nil
@@ -210,7 +223,16 @@ final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable {
             return
         }
 
-        let subdomain = request.requestedSubdomain ?? UUID().uuidString.prefix(8).lowercased()
+        var subdomain = request.requestedSubdomain ?? UUID().uuidString.prefix(8).lowercased()
+        
+        if let requested = request.requestedSubdomain {
+            if !SubdomainValidator.isValid(requested) {
+                try await sendError(context: context, eventLoop: eventLoop, code: 400, message: "Invalid subdomain format")
+                eventLoop.execute { context.close(promise: nil) }
+                return
+            }
+            subdomain = requested
+        }
 
         let tunnel = try await connectionManager.registerTunnel(
             subdomain: String(subdomain),

@@ -11,15 +11,17 @@ public final class HTTPServer: Sendable {
     private let group: MultiThreadedEventLoopGroup
     private let connectionManager: ConnectionManager
     private let requestTracker: RequestTracker
+    private let rateLimiter: RateLimiter
 
     public init(
         config: ServerConfig, logger: Logger, connectionManager: ConnectionManager,
-        requestTracker: RequestTracker
+        requestTracker: RequestTracker, rateLimiter: RateLimiter
     ) {
         self.config = config
         self.logger = logger
         self.connectionManager = connectionManager
         self.requestTracker = requestTracker
+        self.rateLimiter = rateLimiter
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
     }
 
@@ -34,7 +36,8 @@ public final class HTTPServer: Sendable {
                             config: self.config,
                             logger: self.logger,
                             connectionManager: self.connectionManager,
-                            requestTracker: self.requestTracker
+                            requestTracker: self.requestTracker,
+                            rateLimiter: self.rateLimiter
                         ))
                 }
             }
@@ -65,18 +68,20 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
     private let logger: Logger
     private let connectionManager: ConnectionManager
     private let requestTracker: RequestTracker
+    private let rateLimiter: RateLimiter
     private let converter: RequestConverter
     private var requestHead: HTTPRequestHead?
     private var requestBody: ByteBuffer?
 
     init(
         config: ServerConfig, logger: Logger, connectionManager: ConnectionManager,
-        requestTracker: RequestTracker
+        requestTracker: RequestTracker, rateLimiter: RateLimiter
     ) {
         self.config = config
         self.logger = logger
         self.connectionManager = connectionManager
         self.requestTracker = requestTracker
+        self.rateLimiter = rateLimiter
         self.converter = RequestConverter()
     }
 
@@ -112,6 +117,24 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
     private func handleRequest(
         context: ChannelHandlerContext, eventLoop: EventLoop, head: HTTPRequestHead, body: ByteBuffer
     ) async {
+        let clientIP = context.remoteAddress?.ipAddress ?? "unknown"
+        
+        guard await rateLimiter.tryConsume(identifier: clientIP) else {
+            sendResponse(context: context, eventLoop: eventLoop, status: .tooManyRequests, body: "Rate limit exceeded")
+            return
+        }
+        
+        do {
+            try RequestSizeValidator.validateBodySize(body.readableBytes)
+            try RequestSizeValidator.validatePath(head.uri)
+        } catch let error as RequestSizeValidator.ValidationError {
+            sendResponse(context: context, eventLoop: eventLoop, status: .payloadTooLarge, body: error.message)
+            return
+        } catch {
+            sendResponse(context: context, eventLoop: eventLoop, status: .badRequest, body: "Invalid request")
+            return
+        }
+        
         let subdomain = extractSubdomain(from: head.headers["host"].first ?? "")
 
         logger.debug(
