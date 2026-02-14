@@ -4,15 +4,19 @@ Expose local web servers to the internet via public URLs.
 
 ## Usage
 
+### Simple usage
+```bash
+cok -p 8080
+
+#With custom subdomain
+cok -p 8080 -s myapp
+```
+
+### With configs
 ```bash
 cok --port 8080
-
 cok --port 8080 --subdomain myapp
-
 cok --port 8080 --subdomain myapp --api-key YOUR_KEY
-
-cok -p 8080
-cok -p 8080 -s myapp
 ```
 
 ### Options
