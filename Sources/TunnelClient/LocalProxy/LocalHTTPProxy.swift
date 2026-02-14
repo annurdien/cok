@@ -125,7 +125,7 @@ final class HTTPHandler: ChannelInboundHandler, @unchecked Sendable {
         }
     }
 
-    private nonisolated func sendError(context: ChannelHandlerContext, status: HTTPResponseStatus) {
+    nonisolated private func sendError(context: ChannelHandlerContext, status: HTTPResponseStatus) {
         nonisolated(unsafe) let ctx = context
         let wrapOut = self.wrapOutboundOut
         context.eventLoop.execute {
