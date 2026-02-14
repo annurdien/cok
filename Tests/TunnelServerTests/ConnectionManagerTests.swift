@@ -125,7 +125,7 @@ final class ConnectionManagerTests: XCTestCase {
             path: "/test",
             headers: [],
             body: Data(),
-            remoteAddress: "127.0.0.1"
+            remoteAddress: "localhost"
         )
 
         try await manager.sendRequest(tunnelID: tunnel.id, request: request)

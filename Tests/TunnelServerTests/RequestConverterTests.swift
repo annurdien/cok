@@ -58,7 +58,7 @@ final class RequestConverterTests: XCTestCase {
         let message = converter.toProtocolMessage(
             head: request,
             body: emptyBuffer,
-            remoteAddress: "127.0.0.1"
+            remoteAddress: "localhost"
         )
 
         XCTAssertEqual(message.method, "GET")
@@ -127,7 +127,7 @@ final class RequestConverterTests: XCTestCase {
         let message = converter.toProtocolMessage(
             head: request,
             body: emptyBuffer,
-            remoteAddress: "127.0.0.1"
+            remoteAddress: "localhost"
         )
 
         XCTAssertEqual(message.headers.count, 6)

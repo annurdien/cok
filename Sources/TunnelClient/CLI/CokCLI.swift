@@ -24,7 +24,7 @@ struct CokCLI: AsyncParsableCommand {
     var server: String?
 
     @Option(name: .long, help: "Local host to forward to")
-    var host: String = "127.0.0.1"
+    var host: String = "localhost"
 
     @Flag(name: .shortAndLong, help: "Verbose output")
     var verbose: Bool = false

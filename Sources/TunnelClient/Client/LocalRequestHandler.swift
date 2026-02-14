@@ -213,7 +213,7 @@ public actor LocalRequestHandler {
             path: head.uri,
             headers: headers,
             body: bodyData,
-            remoteAddress: "127.0.0.1"
+            remoteAddress: "localhost"
         )
     }
 

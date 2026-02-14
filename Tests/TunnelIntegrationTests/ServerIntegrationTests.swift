@@ -34,7 +34,7 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
             path: "/test",
             headers: [HTTPHeader(name: "host", value: "test.example.com")],
             body: Data(),
-            remoteAddress: "127.0.0.1"
+            remoteAddress: "localhost"
         )
 
         let responseTask = Task {
@@ -87,7 +87,7 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
             path: "/1",
             headers: [],
             body: Data(),
-            remoteAddress: "127.0.0.1"
+            remoteAddress: "localhost"
         )
 
         let request2 = HTTPRequestMessage(
@@ -96,7 +96,7 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
             path: "/2",
             headers: [],
             body: Data(),
-            remoteAddress: "127.0.0.1"
+            remoteAddress: "localhost"
         )
 
         let request3 = HTTPRequestMessage(
@@ -105,7 +105,7 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
             path: "/3",
             headers: [],
             body: Data(),
-            remoteAddress: "127.0.0.1"
+            remoteAddress: "localhost"
         )
 
         let task1 = Task { try await requestTracker.track(requestID: id1) }
@@ -155,7 +155,7 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
             path: "/test",
             headers: [],
             body: Data(),
-            remoteAddress: "127.0.0.1"
+            remoteAddress: "localhost"
         )
 
         let task = Task {

@@ -17,7 +17,7 @@ public struct ClientConfig: Sendable {
         serverURL: String,
         subdomain: String,
         apiKey: String,
-        localHost: String = "127.0.0.1",
+        localHost: String = "localhost",
         localPort: Int = 3000,
         reconnectDelay: TimeInterval = 5.0,
         maxReconnectAttempts: Int = -1,
@@ -52,7 +52,7 @@ public struct ClientConfig: Sendable {
             throw ConfigError.missingRequired("COK_API_KEY")
         }
 
-        let localHost = ProcessInfo.processInfo.environment["COK_LOCAL_HOST"] ?? "127.0.0.1"
+        let localHost = ProcessInfo.processInfo.environment["COK_LOCAL_HOST"] ?? "localhost"
         let localPort = Int(ProcessInfo.processInfo.environment["COK_LOCAL_PORT"] ?? "3000") ?? 3000
 
         return ClientConfig(

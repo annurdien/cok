@@ -104,7 +104,7 @@ final class ClientConfigTests: XCTestCase {
             apiKey: "test-key"
         )
 
-        XCTAssertEqual(config.localHost, "127.0.0.1")
+        XCTAssertEqual(config.localHost, "localhost")
         XCTAssertEqual(config.localPort, 3000)
         XCTAssertEqual(config.reconnectDelay, 5.0)
         XCTAssertEqual(config.maxReconnectAttempts, -1)

@@ -20,6 +20,24 @@ logger.info(
 
 let connectionManager = ConnectionManager(maxConnections: config.maxTunnels, logger: logger)
 let authService = AuthService(secret: config.apiKeySecret)
+
+// Pre-create test API key for development (if TEST_SUBDOMAIN env var is set)
+if let testSubdomain = ProcessInfo.processInfo.environment["TEST_SUBDOMAIN"] {
+    do {
+        let testKey = try await authService.createAPIKey(for: testSubdomain)
+        logger.info("Test API key created", metadata: [
+            "subdomain": "\(testSubdomain)",
+            "key": "\(testKey.key)"
+        ])
+        
+        // Write key to file for client to use
+        let keyFilePath = FileManager.default.currentDirectoryPath + "/.api_key.tmp"
+        try? testKey.key.write(toFile: keyFilePath, atomically: true, encoding: .utf8)
+    } catch {
+        logger.warning("Failed to create test API key", metadata: ["error": "\(error)"])
+    }
+}
+
 let requestTracker = RequestTracker(timeout: 30.0, logger: logger)
 let httpRateLimiter = RateLimiter(configuration: .http)
 let wsRateLimiter = RateLimiter(configuration: .websocket)

@@ -39,7 +39,7 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
             path: "/",
             headers: [],
             body: Data(),
-            remoteAddress: "127.0.0.1"
+            remoteAddress: "localhost"
         )
 
         do {
@@ -213,7 +213,7 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
             path: "/upload",
             headers: [HTTPHeader(name: "content-type", value: "application/octet-stream")],
             body: largeBody,
-            remoteAddress: "127.0.0.1"
+            remoteAddress: "localhost"
         )
 
         try await connectionManager.sendRequest(tunnelID: tunnel.id, request: request)

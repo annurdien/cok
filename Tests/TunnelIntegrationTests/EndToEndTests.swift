@@ -379,7 +379,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
                 path: "/",
                 headers: [],
                 body: Data(),
-                remoteAddress: "127.0.0.1"
+                remoteAddress: "localhost"
             )
             try await connectionManager.sendRequest(tunnelID: nonExistentID, request: request)
             XCTFail("Should have thrown")

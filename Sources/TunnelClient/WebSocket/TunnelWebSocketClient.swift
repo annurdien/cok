@@ -1,9 +1,6 @@
 import Foundation
 import Logging
-@preconcurrency import NIOCore
-@preconcurrency import NIOPosix
-@preconcurrency import NIOHTTP1
-@preconcurrency import NIOWebSocket
+import NIOCore
 import TunnelCore
 
 public actor TunnelWebSocketClient {
@@ -17,10 +14,11 @@ public actor TunnelWebSocketClient {
     private let config: ClientConfig
     private let logger: Logger
     private var state: State = .disconnected
-    private var channel: Channel?
+    private var webSocketTask: URLSessionWebSocketTask?
     private var reconnectAttempts: Int = 0
     private var isShuttingDown: Bool = false
     private var messageHandler: (@Sendable (ProtocolFrame) async -> Void)?
+    private var receiveTask: Task<Void, Never>?
 
     public init(config: ClientConfig, logger: Logger) {
         self.config = config
@@ -51,6 +49,11 @@ public actor TunnelWebSocketClient {
             reconnectAttempts = 0
             state = .connected
 
+            // Start receiving messages
+            receiveTask = Task { [weak self] in
+                await self?.receiveMessages()
+            }
+
             logger.info("Successfully connected to tunnel server", metadata: [
                 "subdomain": "\(config.subdomain)"
             ])
@@ -75,77 +78,51 @@ public actor TunnelWebSocketClient {
             throw TunnelError.client(.invalidRequest("Invalid server URL"), context: ErrorContext(component: "WebSocketClient"))
         }
 
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        var request = URLRequest(url: url)
+        request.setValue(config.subdomain, forHTTPHeaderField: "X-Subdomain")
+        request.setValue(config.apiKey, forHTTPHeaderField: "X-API-Key")
 
-        let bootstrap = ClientBootstrap(group: group)
-            .channelInitializer { channel in
-                let httpHandler = HTTPInitialRequestHandler(
-                    host: url.host ?? "localhost",
-                    path: url.path.isEmpty ? "/" : url.path,
-                    headers: [
-                        ("X-Subdomain", self.config.subdomain),
-                        ("X-API-Key", self.config.apiKey)
-                    ]
-                )
+        let session = URLSession(configuration: .default)
+        let task = session.webSocketTask(with: request)
+        self.webSocketTask = task
+        
+        task.resume()
 
-                let websocketUpgrader = NIOWebSocketClientUpgrader(
-                    maxFrameSize: 1 << 24,
-                    automaticErrorHandling: true,
-                    upgradePipelineHandler: { channel, _ in
-                        channel.pipeline.addHandler(WebSocketFrameHandler(client: self))
-                    }
-                )
-
-                return channel.pipeline.addHTTPClientHandlers(
-                    leftOverBytesStrategy: .forwardBytes,
-                    withClientUpgrade: (
-                        upgraders: [websocketUpgrader],
-                        completionHandler: { _ in }
-                    )
-                ).flatMap {
-                    channel.pipeline.addHandler(httpHandler)
-                }
-            }
-
-        let host = url.host ?? "localhost"
-        let port = url.port ?? (url.scheme == "wss" ? 443 : 80)
-
-        self.channel = try await bootstrap.connect(host: host, port: port).get()
-
+        // Send initial connect request
         try await sendConnectRequest()
     }
-
-    private func sendConnectRequest() async throws {
-        let connectMsg = ConnectRequest(
-            apiKey: config.apiKey,
-            requestedSubdomain: config.subdomain,
-            clientVersion: "0.1.0",
-            capabilities: ["http/1.1"]
-        )
-
-        let payload = try JSONEncoder().encode(connectMsg)
-        var buffer = ByteBufferAllocator().buffer(capacity: payload.count)
-        buffer.writeBytes(payload)
-
-        let frame = try ProtocolFrame(
-            version: .current,
-            messageType: .connectRequest,
-            flags: [],
-            payload: buffer
-        )
-
-        let frameData = frame.encode()
-        let wsFrame = WebSocketFrame(
-            fin: true,
-            opcode: .binary,
-            data: frameData
-        )
-
-        try await channel?.writeAndFlush(wsFrame).get()
-
-        logger.debug("Sent connect request", metadata: [
-            "subdomain": "\(config.subdomain)"
-        ])
+    
+    private func receiveMessages() async {
+        while !isShuttingDown && state == .connected {
+            do {
+                guard let task = webSocketTask else { break }
+                let message = try await task.receive()
+                
+                switch message {
+                case .data(let data):
+                    var buffer = ByteBuffer.from(data)
+                    if let frame = try? ProtocolFrame.decode(from: &buffer) {
+                        await handleIncomingFrame(frame)
+                    }
+                case .string:
+                    logger.warning("Received unexpected text message")
+                @unknown default:
+                    break
+                }
+            } catch {
+                if !isShuttingDown {
+                    logger.error("Error receiving message", metadata: [
+                        "error": "\(error.localizedDescription)"
+                    ])
+                    
+                    state = .disconnected
+                    Task {
+                        try? await self.scheduleReconnect()
+                    }
+                }
+                break
+            }
+        }
     }
 
     private func scheduleReconnect() async throws {
@@ -169,41 +146,34 @@ public actor TunnelWebSocketClient {
     public func disconnect() async {
         isShuttingDown = true
         state = .disconnected
+        
+        receiveTask?.cancel()
+        receiveTask = nil
 
-        if let channel = channel {
-            try? await channel.close().get()
-            self.channel = nil
+        if let task = webSocketTask {
+            task.cancel(with: .goingAway, reason: nil)
+            self.webSocketTask = nil
         }
 
         logger.info("Disconnected from tunnel server")
     }
 
     public func sendFrame(_ frame: ProtocolFrame) async throws {
-        guard let channel = channel, state == .connected else {
+        guard let task = webSocketTask, state == .connected else {
             throw TunnelError.client(.connectionFailed("Not connected"), context: ErrorContext(component: "WebSocketClient"))
         }
 
-        let frameData = frame.encode()
-        let wsFrame = WebSocketFrame(
-            fin: true,
-            opcode: .binary,
-            data: frameData
-        )
-
-        try await channel.writeAndFlush(wsFrame).get()
+        let frameData = frame.encode().toData()
+        let message = URLSessionWebSocketTask.Message.data(frameData)
+        
+        try await task.send(message)
     }
 
     public func onMessage(handler: @escaping @Sendable (ProtocolFrame) async -> Void) {
         self.messageHandler = handler
     }
 
-    nonisolated func handleIncomingFrame(_ frame: ProtocolFrame) {
-        Task {
-            await self._handleIncomingFrame(frame)
-        }
-    }
-
-    private func _handleIncomingFrame(_ frame: ProtocolFrame) async {
+    private func handleIncomingFrame(_ frame: ProtocolFrame) async {
         guard let handler = messageHandler else {
             logger.warning("No message handler registered")
             return
@@ -219,85 +189,46 @@ public actor TunnelWebSocketClient {
     public func isConnected() -> Bool {
         return state == .connected
     }
-}
-
-final class HTTPInitialRequestHandler: ChannelInboundHandler, RemovableChannelHandler, @unchecked Sendable {
-    typealias InboundIn = HTTPClientResponsePart
-    typealias OutboundOut = HTTPClientRequestPart
-
-    private let host: String
-    private let path: String
-    private let headers: [(String, String)]
-
-    init(host: String, path: String, headers: [(String, String)]) {
-        self.host = host
-        self.path = path
-        self.headers = headers
-    }
-
-    func channelActive(context: ChannelHandlerContext) {
-        var httpHeaders = HTTPHeaders()
-        httpHeaders.add(name: "Host", value: host)
-        httpHeaders.add(name: "Connection", value: "Upgrade")
-        httpHeaders.add(name: "Upgrade", value: "websocket")
-        httpHeaders.add(name: "Sec-WebSocket-Version", value: "13")
-
-        for (name, value) in headers {
-            httpHeaders.add(name: name, value: value)
-        }
-
-        let requestHead = HTTPRequestHead(
-            version: .http1_1,
-            method: .GET,
-            uri: path,
-            headers: httpHeaders
+    
+    private func sendConnectRequest() async throws {
+        let connectMsg = ConnectRequest(
+            apiKey: config.apiKey,
+            requestedSubdomain: config.subdomain,
+            clientVersion: "0.1.0",
+            capabilities: ["http/1.1"]
         )
 
-        context.write(self.wrapOutboundOut(.head(requestHead)), promise: nil)
-        context.writeAndFlush(self.wrapOutboundOut(.end(nil)), promise: nil)
-    }
+        let payload = try JSONEncoder().encode(connectMsg)
+        var buffer = ByteBufferAllocator().buffer(capacity: payload.count)
+        buffer.writeBytes(payload)
 
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let response = self.unwrapInboundIn(data)
+        let frame = try ProtocolFrame(
+            version: .current,
+            messageType: .connectRequest,
+            flags: [],
+            payload: buffer
+        )
 
-        switch response {
-        case .head(let head):
-            if head.status == .switchingProtocols {
-                context.pipeline.removeHandler(self, promise: nil)
-            }
-        case .body, .end:
-            break
-        }
+        let frameData = frame.encode().toData()
+        let message = URLSessionWebSocketTask.Message.data(frameData)
+        
+        try await webSocketTask?.send(message)
+
+        logger.debug("Sent connect request", metadata: [
+            "subdomain": "\(config.subdomain)"
+        ])
     }
 }
 
-final class WebSocketFrameHandler: ChannelInboundHandler, @unchecked Sendable {
-    typealias InboundIn = WebSocketFrame
-
-    private let client: TunnelWebSocketClient
-
-    init(client: TunnelWebSocketClient) {
-        self.client = client
+// MARK: - ByteBuffer Extension for Data conversion
+extension ByteBuffer {
+    func toData() -> Data {
+        return Data(self.readableBytesView)
     }
-
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let frame = self.unwrapInboundIn(data)
-
-        guard frame.opcode == .binary else {
-            return
-        }
-
-        var buffer = frame.unmaskedData
-
-        do {
-            let protocolFrame = try ProtocolFrame.decode(from: &buffer)
-            client.handleIncomingFrame(protocolFrame)
-        } catch {
-            context.fireErrorCaught(error)
-        }
-    }
-
-    func errorCaught(context: ChannelHandlerContext, error: Error) {
-        context.close(promise: nil)
+    
+    static func from(_ data: Data) -> ByteBuffer {
+        var buffer = ByteBufferAllocator().buffer(capacity: data.count)
+        buffer.writeBytes(data)
+        return buffer
     }
 }
