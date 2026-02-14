@@ -2,29 +2,50 @@
 
 Expose local web servers to the internet via public URLs.
 
-## Usage
+1. [Install](#install)
+2. [Usage](#usage)  
+3. [Deploy Your Own Server](#deploy-your-own-server)
+4. [Configuration](#configuration)
+5. [License](#license)
 
-### Simple usage
+## Install
+
+### Brew (macOS) - Recommended
 ```bash
-cok -p 8080
-
-#With custom subdomain
-cok -p 8080 -s myapp
+brew tap annurdien/tap
+brew install cok
 ```
 
-### With configs
+### Download Binary
+Download the latest release for your platform: [cok/releases](https://github.com/annurdien/cok/releases)
+
+### From Source
 ```bash
-cok --port 8080
-cok --port 8080 --subdomain myapp
-cok --port 8080 --subdomain myapp --api-key YOUR_KEY
+git clone https://github.com/annurdien/cok.git
+cd cok
+swift build -c release --product cok
+```
+
+## Usage
+
+### Quick Start
+```bash
+cok -p 8080
+```
+
+The above command opens a tunnel and forwards traffic to `localhost:8080`.
+
+### With Custom Subdomain
+```bash
+cok -p 8080 -s myapp
 ```
 
 ### Options
 
-| Option | Short | Environment | Description |
-|--------|-------|-------------|-------------|
+| Flag | Short | Environment | Description |
+|------|-------|-------------|-------------|
 | `--port` | `-p` | | Local port to forward (required) |
-| `--subdomain` | `-s` | `COK_SUBDOMAIN` | Subdomain (auto-generated if not set) |
+| `--subdomain` | `-s` | `COK_SUBDOMAIN` | Custom subdomain (auto-generated if not set) |
 | `--api-key` | | `COK_API_KEY` | API key for authentication |
 | `--server` | | `COK_SERVER_URL` | Server URL (default: `ws://localhost:8081`) |
 | `--host` | | | Local host (default: `127.0.0.1`) |
@@ -32,14 +53,7 @@ cok --port 8080 --subdomain myapp --api-key YOUR_KEY
 
 ## Deploy Your Own Server
 
-### Docker (Recommended)
-
-```bash
-docker compose up -d server
-```
-
-Or with custom configuration:
-
+### Docker
 ```bash
 docker run -d -p 8080:8080 -p 8081:8081 \
   -e COK_API_KEY_SECRET=your-secret-key-min-32-chars \
@@ -48,13 +62,14 @@ docker run -d -p 8080:8080 -p 8081:8081 \
 ```
 
 ### From Source
-
 ```bash
-swift build -c release
+swift build -c release --product cok-server
 .build/release/cok-server
 ```
 
-### Server Configuration
+## Configuration
+
+### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -64,128 +79,35 @@ swift build -c release
 | `COK_MAX_TUNNELS` | 1000 | Maximum concurrent tunnels |
 | `COK_API_KEY_SECRET` | (required) | Secret for API key HMAC validation |
 
-## Reverse Proxy Setup
+### Reverse Proxy Setup
 
-### Nginx
+For production, use a reverse proxy like Nginx or Caddy:
 
 ```nginx
-# Tunnel HTTP traffic
+# HTTP traffic
 server {
     listen 80;
     server_name *.tunnel.yourdomain.com;
-
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
 
-# WebSocket for client connections
+# WebSocket for clients  
 server {
     listen 443 ssl;
     server_name tunnel.yourdomain.com;
-
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
-
     location /ws {
         proxy_pass http://127.0.0.1:8081;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_read_timeout 3600s;
     }
 }
 ```
 
-### Caddy
-
-```caddyfile
-*.tunnel.yourdomain.com {
-    reverse_proxy localhost:8080
-}
-
-tunnel.yourdomain.com {
-    reverse_proxy /ws/* localhost:8081
-}
-```
-
-### DNS
-
-Set up wildcard DNS:
-```
-*.tunnel.yourdomain.com → your-server-ip
-```
-
-## Health & Monitoring
-
-### Health Endpoints
-
-```bash
-# Basic health check
-curl http://localhost:8080/health
-
-# Liveness probe (for k8s)
-curl http://localhost:8080/health/live
-
-# Readiness probe (for k8s)
-curl http://localhost:8080/health/ready
-```
-
-### Prometheus Metrics
-
-Metrics available at `/metrics`:
-
-```bash
-curl http://localhost:8080/metrics
-```
-
-Key metrics: `cok_active_tunnels`, `cok_requests_total`, `cok_request_duration_seconds`
-
-### Kubernetes
-
-```yaml
-livenessProbe:
-  httpGet:
-    path: /health/live
-    port: 8080
-  initialDelaySeconds: 5
-  periodSeconds: 10
-
-readinessProbe:
-  httpGet:
-    path: /health/ready
-    port: 8080
-  initialDelaySeconds: 5
-  periodSeconds: 10
-
-terminationGracePeriodSeconds: 45
-```
-
-## Security
-
-- **Authentication**: API key with HMAC-SHA256 validation
-- **Rate Limiting**: Token bucket per client IP
-- **Subdomain Validation**: Reserved words blocked, length limits enforced
-- **Input Sanitization**: Request size limits, header validation
-- **Graceful Shutdown**: Handles SIGTERM/SIGINT, drains connections
-
-## Production Checklist
-
-- [ ] Set strong `COK_API_KEY_SECRET` (min 32 characters)
-- [ ] Enable TLS via reverse proxy
-- [ ] Configure wildcard DNS
-- [ ] Set up Prometheus monitoring
-- [ ] Configure log aggregation
-- [ ] Set resource limits in container
-
-## Documentation
-
-- [Architecture](Docs/Architecture.md) - System design and components
-- [Protocol](Docs/Protocol.md) - Binary protocol specification
-- [Deployment](Docs/Deployment.md) - Detailed deployment guide
+Set up wildcard DNS: `*.tunnel.yourdomain.com → your-server-ip`
 
 ## License
 

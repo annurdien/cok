@@ -22,7 +22,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
         requestTracker = RequestTracker(timeout: 5.0, logger: logger)
         authService = AuthService(secret: "test-secret-key-minimum-32-bytes!")
         metrics = MetricsCollector()
-        healthChecker = HealthChecker(version: "1.0.0-test")
+        healthChecker = HealthChecker(version: "0.1.0-test")
     }
 
     func testFullTunnelLifecycle() async throws {

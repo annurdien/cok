@@ -87,7 +87,7 @@ final class MetricsCollectorTests: XCTestCase {
 final class HealthCheckerTests: XCTestCase {
 
     func testHealthyCheck() async {
-        let checker = HealthChecker(version: "1.0.0")
+        let checker = HealthChecker(version: "0.1.0")
         await checker.register(name: "test") {
             .healthy("All good")
         }

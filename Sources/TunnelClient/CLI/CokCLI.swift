@@ -8,7 +8,7 @@ struct CokCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "cok",
         abstract: "Expose your local server to the internet",
-        version: "1.0.0"
+        version: "0.1.0"
     )
 
     @Option(name: .shortAndLong, help: "Local port to forward")

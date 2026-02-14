@@ -72,7 +72,7 @@ All payloads are JSON-encoded.
 {
   "apiKey": "cok_prod_...",
   "requestedSubdomain": "myapp",  // optional
-  "clientVersion": "1.0.0",
+  "clientVersion": "0.1.0",
   "capabilities": ["http/1.1"]
 }
 ```

@@ -119,7 +119,7 @@ public actor TunnelWebSocketClient {
         let connectMsg = ConnectRequest(
             apiKey: config.apiKey,
             requestedSubdomain: config.subdomain,
-            clientVersion: "1.0.0",
+            clientVersion: "0.1.0",
             capabilities: ["http/1.1"]
         )
 
