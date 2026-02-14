@@ -6,7 +6,7 @@ WORKDIR /build
 COPY Package.swift Package.resolved ./
 COPY Sources ./Sources
 
-RUN swift build -c release --static-swift-stdlib
+RUN swift build -c release --static-swift-stdlib --product cok-server --product cok
 
 # Server runtime
 FROM ubuntu:24.04 AS server
@@ -41,9 +41,9 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY --from=builder /build/.build/release/cok-client /app/cok-client
+COPY --from=builder /build/.build/release/cok /app/cok
 
 ENV COK_SERVER_URL=ws://localhost:8081
 ENV COK_LOCAL_PORT=3000
 
-ENTRYPOINT ["/app/cok-client"]
+ENTRYPOINT ["/app/cok"]
