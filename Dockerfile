@@ -8,7 +8,8 @@ COPY Sources ./Sources
 COPY Tests ./Tests
 COPY Benchmarks ./Benchmarks
 
-RUN swift build -c release --static-swift-stdlib --product cok-server --product cok
+RUN swift build -c release --static-swift-stdlib --product cok-server
+RUN swift build -c release --static-swift-stdlib --product cok
 
 # Server runtime
 FROM ubuntu:24.04 AS server
