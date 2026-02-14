@@ -9,7 +9,6 @@ COPY Tests ./Tests
 COPY Benchmarks ./Benchmarks
 
 RUN swift build -c release --static-swift-stdlib --product cok-server
-RUN swift build -c release --static-swift-stdlib --product cok
 
 # Server runtime - Ubuntu 24.04 Slim (matches build environment glibc)
 FROM ubuntu:24.04 AS server
@@ -38,25 +37,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
 ENTRYPOINT ["/app/cok-server"]
-
-# Client runtime - Ubuntu 24.04 Slim
-FROM ubuntu:24.04 AS client
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean \
-    && rm -rf /tmp/* /var/tmp/*
-
-WORKDIR /app
-
-COPY --from=builder /build/.build/release/cok /app/cok
-
-ENV COK_SERVER_URL=ws://localhost:8081
-ENV COK_LOCAL_PORT=3000
-
-ENTRYPOINT ["/app/cok"]
-
-ENTRYPOINT ["/app/cok"]
-
-ENTRYPOINT ["/app/cok"]
