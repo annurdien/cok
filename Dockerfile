@@ -11,13 +11,15 @@ COPY Benchmarks ./Benchmarks
 RUN swift build -c release --static-swift-stdlib --product cok-server
 RUN swift build -c release --static-swift-stdlib --product cok
 
-# Server runtime - Alpine Linux (5MB vs Ubuntu's 70MB)
-FROM alpine:3.20 AS server
+# Server runtime - Debian Slim (glibc compatible with Swift)
+FROM debian:12-slim AS server
 
 # Install minimal dependencies
-RUN apk --no-cache add \
+RUN apt-get update && apt-get install -y \
     ca-certificates \
-    curl
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 WORKDIR /app
 
@@ -36,11 +38,13 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 ENTRYPOINT ["/app/cok-server"]
 
-# Client runtime - Alpine Linux
-FROM alpine:3.20 AS client
+# Client runtime - Debian Slim
+FROM debian:12-slim AS client
 
-RUN apk --no-cache add \
-    ca-certificates
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 WORKDIR /app
 
@@ -48,6 +52,8 @@ COPY --from=builder /build/.build/release/cok /app/cok
 
 ENV COK_SERVER_URL=ws://localhost:8081
 ENV COK_LOCAL_PORT=3000
+
+ENTRYPOINT ["/app/cok"]
 
 ENTRYPOINT ["/app/cok"]
 
