@@ -1,3 +1,4 @@
+# Ultra-minimal Dockerfile using distroless (even smaller than Alpine)
 # Build stage
 FROM swift:6.0-noble AS builder
 
@@ -11,13 +12,8 @@ COPY Benchmarks ./Benchmarks
 RUN swift build -c release --static-swift-stdlib --product cok-server
 RUN swift build -c release --static-swift-stdlib --product cok
 
-# Server runtime - Alpine Linux (5MB vs Ubuntu's 70MB)
-FROM alpine:3.20 AS server
-
-# Install minimal dependencies
-RUN apk --no-cache add \
-    ca-certificates \
-    curl
+# Server runtime - Distroless (2MB base image!)
+FROM gcr.io/distroless/static-debian12 AS server
 
 WORKDIR /app
 
@@ -31,16 +27,14 @@ ENV COK_API_KEY_SECRET=change-me-in-production
 
 EXPOSE 8080 8081
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+# No curl available in distroless, so health check via TCP
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/app/cok-server", "--health-check"] || exit 1
 
 ENTRYPOINT ["/app/cok-server"]
 
-# Client runtime - Alpine Linux
-FROM alpine:3.20 AS client
-
-RUN apk --no-cache add \
-    ca-certificates
+# Client runtime - Distroless
+FROM gcr.io/distroless/static-debian12 AS client
 
 WORKDIR /app
 
@@ -48,7 +42,5 @@ COPY --from=builder /build/.build/release/cok /app/cok
 
 ENV COK_SERVER_URL=ws://localhost:8081
 ENV COK_LOCAL_PORT=3000
-
-ENTRYPOINT ["/app/cok"]
 
 ENTRYPOINT ["/app/cok"]
