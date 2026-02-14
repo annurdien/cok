@@ -25,11 +25,11 @@ WORKDIR /app
 
 COPY --from=builder /build/.build/release/cok-server /app/cok-server
 
-ENV COK_HTTP_PORT=8080
-ENV COK_WS_PORT=8081
-ENV COK_DOMAIN=localhost
-ENV COK_MAX_TUNNELS=1000
-ENV COK_API_KEY_SECRET=change-me-in-production
+ENV HTTP_PORT=8080
+ENV WS_PORT=8081
+ENV BASE_DOMAIN=localhost
+ENV MAX_TUNNELS=1000
+ENV API_KEY_SECRET=change-me-in-production
 
 EXPOSE 8080 8081
 
