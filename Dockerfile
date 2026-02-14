@@ -11,15 +11,16 @@ COPY Benchmarks ./Benchmarks
 RUN swift build -c release --static-swift-stdlib --product cok-server
 RUN swift build -c release --static-swift-stdlib --product cok
 
-# Server runtime - Debian Slim (glibc compatible with Swift)
-FROM debian:12-slim AS server
+# Server runtime - Ubuntu 24.04 Slim (matches build environment glibc)
+FROM ubuntu:24.04 AS server
 
-# Install minimal dependencies
-RUN apt-get update && apt-get install -y \
+# Install minimal dependencies and clean up thoroughly  
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && apt-get clean \
+    && rm -rf /tmp/* /var/tmp/*
 
 WORKDIR /app
 
@@ -38,13 +39,14 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 ENTRYPOINT ["/app/cok-server"]
 
-# Client runtime - Debian Slim
-FROM debian:12-slim AS client
+# Client runtime - Ubuntu 24.04 Slim
+FROM ubuntu:24.04 AS client
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && apt-get clean \
+    && rm -rf /tmp/* /var/tmp/*
 
 WORKDIR /app
 
