@@ -5,6 +5,8 @@ WORKDIR /build
 
 COPY Package.swift Package.resolved ./
 COPY Sources ./Sources
+COPY Tests ./Tests
+COPY Benchmarks ./Benchmarks
 
 RUN swift build -c release --static-swift-stdlib --product cok-server --product cok
 
