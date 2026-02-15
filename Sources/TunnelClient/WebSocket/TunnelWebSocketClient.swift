@@ -143,7 +143,9 @@ public actor TunnelWebSocketClient {
             headers: headers,
             on: eventLoopGroup.any()
         ) { [weak self] ws in
-            self?.webSocket = ws
+            Task { [weak self] in
+                await self?.setWebSocket(ws)
+            }
 
             ws.onBinary { [weak self] (_: WebSocket, buffer: ByteBuffer) in
                 Task {
@@ -159,6 +161,10 @@ public actor TunnelWebSocketClient {
         }.get()
 
         try await sendConnectRequest()
+    }
+
+    private func setWebSocket(_ ws: WebSocket) {
+        webSocket = ws
     }
 
     private func handleBinaryMessage(_ buffer: ByteBuffer) async {

@@ -22,7 +22,6 @@ public struct APIKey: Sendable, Hashable {
         self.expiresAt = expiresAt
     }
 
-    /// Checks if the API key is expired
     public var isExpired: Bool {
         guard let expiresAt = expiresAt else {
             return false
@@ -51,7 +50,6 @@ public actor AuthService {
     }
 
     public func createAPIKey(for subdomain: String, expiresIn: TimeInterval? = nil) throws -> APIKey {
-        // Use HMAC-SHA256 for API key generation
         let timestamp = Date().timeIntervalSince1970
         let message = "\(subdomain):\(UUID().uuidString):\(timestamp)"
         let signature = HMAC<SHA256>.authenticationCode(
@@ -74,9 +72,6 @@ public actor AuthService {
         return Array(apiKeys.values)
     }
 
-    /// Verifies an API key using HMAC validation
-    /// This allows verification without storing keys in memory (stateless)
-    /// Uses constant-time comparison to prevent timing attacks
     public func verifyAPIKeyHMAC(_ key: String, subdomain: String, timestamp: TimeInterval) -> Bool {
         let message = "\(subdomain):\(timestamp)"
         guard let keyData = Data(hexString: key) else { return false }
@@ -88,8 +83,6 @@ public actor AuthService {
     }
 
     // MARK: - JWT Token Management
-
-    /// Generates a session token for an authenticated tunnel
     public func generateSessionToken(
         tunnelID: UUID,
         subdomain: String,
@@ -108,19 +101,15 @@ public actor AuthService {
         return try jwtService.generateToken(claims: claims)
     }
 
-    /// Validates a session token
     public func validateSessionToken(_ token: String) throws -> JWTService.Claims {
         return try jwtService.validateToken(token)
     }
 
-    /// Refreshes a session token
     public func refreshSessionToken(_ token: String, expiresIn: TimeInterval = 86400) throws -> String {
         return try jwtService.refreshToken(token, expiresIn: expiresIn)
     }
 
     // MARK: - Cleanup
-
-    /// Removes expired API keys
     public func cleanupExpiredKeys() {
         apiKeys = apiKeys.filter { !$0.value.isExpired }
     }
