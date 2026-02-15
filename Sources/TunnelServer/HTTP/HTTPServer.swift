@@ -117,6 +117,12 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
     private func handleRequest(
         context: ChannelHandlerContext, eventLoop: EventLoop, head: HTTPRequestHead, body: ByteBuffer
     ) async {
+        // Health check endpoint (no subdomain required)
+        if head.uri == "/health" || head.uri == "/health/live" || head.uri == "/health/ready" {
+            sendResponse(context: context, eventLoop: eventLoop, status: .ok, body: "OK")
+            return
+        }
+
         let clientIP = context.remoteAddress?.ipAddress ?? "unknown"
 
         guard await rateLimiter.tryConsume(identifier: clientIP) else {
