@@ -8,15 +8,15 @@ import NIOHTTP1
 import NIOWebSocket
 import TunnelCore
 
-final class NIOWebSocketClientHandler: ChannelInboundHandler {
+final class NIOWebSocketClientHandler: ChannelInboundHandler, Sendable {
     typealias InboundIn = WebSocketFrame
     typealias OutboundOut = WebSocketFrame
 
     private let logger: Logger
     private let messageHandler: (@Sendable (ProtocolFrame) async -> Void)?
-    private let onDisconnect: () -> Void
+    private let onDisconnect: @Sendable () -> Void
 
-    init(logger: Logger, messageHandler: (@Sendable (ProtocolFrame) async -> Void)?, onDisconnect: @escaping () -> Void) {
+    init(logger: Logger, messageHandler: (@Sendable (ProtocolFrame) async -> Void)?, onDisconnect: @escaping @Sendable () -> Void) {
         self.logger = logger
         self.messageHandler = messageHandler
         self.onDisconnect = onDisconnect
@@ -29,8 +29,10 @@ final class NIOWebSocketClientHandler: ChannelInboundHandler {
         case .binary:
             var buffer = frame.unmaskedData
             if let protocolFrame = try? ProtocolFrame.decode(from: &buffer) {
-                Task {
-                    await self.messageHandler?(protocolFrame)
+                if let handler = self.messageHandler {
+                    Task {
+                        await handler(protocolFrame)
+                    }
                 }
             }
         case .connectionClose:
