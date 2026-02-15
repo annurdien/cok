@@ -142,21 +142,21 @@ public actor TunnelWebSocketClient {
             to: finalURL,
             headers: headers,
             on: eventLoopGroup.any()
-        ).get()
+        ) { ws in
+            ws.onBinary { [weak self] (ws: WebSocket, buffer: ByteBuffer) in
+                Task {
+                    await self?.handleBinaryMessage(buffer)
+                }
+            }
+
+            ws.onClose.whenComplete { [weak self] (result: Result<Void, Error>) in
+                Task {
+                    await self?.handleDisconnect()
+                }
+            }
+        }.get()
 
         self.webSocket = ws
-
-        ws.onBinary { [weak self] _, buffer in
-            Task {
-                await self?.handleBinaryMessage(buffer)
-            }
-        }
-
-        ws.onClose.whenComplete { [weak self] _ in
-            Task {
-                await self?.handleDisconnect()
-            }
-        }
 
         try await sendConnectRequest()
     }

@@ -37,8 +37,9 @@ final class NIOWebSocketClientHandler: ChannelInboundHandler {
             onDisconnect()
             context.close(promise: nil)
         case .ping:
-            var pongData = context.channel.allocator.buffer(capacity: frame.data.readableBytes)
-            pongData.writeBuffer(&frame.data)
+            var frameData = frame.data
+            var pongData = context.channel.allocator.buffer(capacity: frameData.readableBytes)
+            pongData.writeBuffer(&frameData)
             let pongFrame = WebSocketFrame(fin: true, opcode: .pong, data: pongData)
             context.writeAndFlush(wrapOutboundOut(pongFrame), promise: nil)
         default:
