@@ -232,7 +232,10 @@ public actor LocalRequestHandler {
         let (data, response) = try await URLSession.shared.data(for: urlRequest)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw TunnelError.client(.localServerUnreachable(host: config.localHost, port: config.localPort), context: ErrorContext(component: "RequestHandler"))
+            throw TunnelError.client(
+                .localServerUnreachable(host: config.localHost, port: config.localPort),
+                context: ErrorContext(component: "RequestHandler")
+            )
         }
 
         // Convert URLResponse to HTTPResponseMessage

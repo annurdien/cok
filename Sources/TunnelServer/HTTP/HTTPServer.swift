@@ -169,6 +169,22 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
                 "tunnelID": "\(tunnel.id.uuidString.prefix(8))",
             ])
 
+        await forwardToTunnel(
+            context: context,
+            eventLoop: eventLoop,
+            head: head,
+            body: body,
+            tunnel: tunnel
+        )
+    }
+
+    private func forwardToTunnel(
+        context: ChannelHandlerContext,
+        eventLoop: EventLoop,
+        head: HTTPRequestHead,
+        body: ByteBuffer,
+        tunnel: TunnelConnection
+    ) async {
         do {
             let remoteAddress = context.remoteAddress?.description ?? "unknown"
             let protocolRequest = converter.toProtocolMessage(

@@ -29,7 +29,7 @@ if let testSubdomain = ProcessInfo.processInfo.environment["TEST_SUBDOMAIN"] {
             "subdomain": "\(testSubdomain)",
             "key": "\(testKey.key)"
         ])
-        
+
         // Write key to file for client to use
         let keyFilePath = FileManager.default.currentDirectoryPath + "/.api_key.tmp"
         try? testKey.key.write(toFile: keyFilePath, atomically: true, encoding: .utf8)
@@ -45,11 +45,20 @@ let metrics = MetricsCollector()
 let healthChecker = HealthChecker(version: "0.1.0")
 
 let httpServer = HTTPServer(
-    config: config, logger: logger, connectionManager: connectionManager,
-    requestTracker: requestTracker, rateLimiter: httpRateLimiter)
+    config: config,
+    logger: logger,
+    connectionManager: connectionManager,
+    requestTracker: requestTracker,
+    rateLimiter: httpRateLimiter
+)
 let wsServer = WebSocketServer(
-    config: config, logger: logger, connectionManager: connectionManager, authService: authService,
-    requestTracker: requestTracker, rateLimiter: wsRateLimiter)
+    config: config,
+    logger: logger,
+    connectionManager: connectionManager,
+    authService: authService,
+    requestTracker: requestTracker,
+    rateLimiter: wsRateLimiter
+)
 
 let shutdown = GracefulShutdown(logger: logger, timeout: 30)
 

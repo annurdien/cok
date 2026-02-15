@@ -118,19 +118,25 @@ final class RateLimiterTests: XCTestCase {
         XCTAssertGreaterThan(retryAfter!, 0)
     }
 
-    func testPresetConfigurations() async {
+    func testPresetConfigurationAPI() async {
         let apiLimiter = RateLimiter(configuration: .api)
         let apiTokens = await apiLimiter.availableTokens(identifier: "test")
         XCTAssertEqual(apiTokens, 60)
+    }
 
+    func testPresetConfigurationConnection() async {
         let connectionLimiter = RateLimiter(configuration: .connection)
         let connTokens = await connectionLimiter.availableTokens(identifier: "test")
         XCTAssertEqual(connTokens, 10)
+    }
 
+    func testPresetConfigurationHTTP() async {
         let httpLimiter = RateLimiter(configuration: .http)
         let httpTokens = await httpLimiter.availableTokens(identifier: "test")
         XCTAssertEqual(httpTokens, 120)
+    }
 
+    func testPresetConfigurationWebSocket() async {
         let wsLimiter = RateLimiter(configuration: .websocket)
         let wsTokens = await wsLimiter.availableTokens(identifier: "test")
         XCTAssertEqual(wsTokens, 300)

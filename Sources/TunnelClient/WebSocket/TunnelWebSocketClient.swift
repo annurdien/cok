@@ -85,19 +85,19 @@ public actor TunnelWebSocketClient {
         let session = URLSession(configuration: .default)
         let task = session.webSocketTask(with: request)
         self.webSocketTask = task
-        
+
         task.resume()
 
         // Send initial connect request
         try await sendConnectRequest()
     }
-    
+
     private func receiveMessages() async {
         while !isShuttingDown && state == .connected {
             do {
                 guard let task = webSocketTask else { break }
                 let message = try await task.receive()
-                
+
                 switch message {
                 case .data(let data):
                     var buffer = ByteBuffer.from(data)
@@ -114,7 +114,7 @@ public actor TunnelWebSocketClient {
                     logger.error("Error receiving message", metadata: [
                         "error": "\(error.localizedDescription)"
                     ])
-                    
+
                     state = .disconnected
                     Task {
                         try? await self.scheduleReconnect()
@@ -146,7 +146,7 @@ public actor TunnelWebSocketClient {
     public func disconnect() async {
         isShuttingDown = true
         state = .disconnected
-        
+
         receiveTask?.cancel()
         receiveTask = nil
 
@@ -165,7 +165,7 @@ public actor TunnelWebSocketClient {
 
         let frameData = frame.encode().toData()
         let message = URLSessionWebSocketTask.Message.data(frameData)
-        
+
         try await task.send(message)
     }
 
@@ -189,7 +189,7 @@ public actor TunnelWebSocketClient {
     public func isConnected() -> Bool {
         return state == .connected
     }
-    
+
     private func sendConnectRequest() async throws {
         let connectMsg = ConnectRequest(
             apiKey: config.apiKey,
@@ -211,7 +211,7 @@ public actor TunnelWebSocketClient {
 
         let frameData = frame.encode().toData()
         let message = URLSessionWebSocketTask.Message.data(frameData)
-        
+
         try await webSocketTask?.send(message)
 
         logger.debug("Sent connect request", metadata: [
@@ -225,7 +225,7 @@ extension ByteBuffer {
     func toData() -> Data {
         return Data(self.readableBytesView)
     }
-    
+
     static func from(_ data: Data) -> ByteBuffer {
         var buffer = ByteBufferAllocator().buffer(capacity: data.count)
         buffer.writeBytes(data)
