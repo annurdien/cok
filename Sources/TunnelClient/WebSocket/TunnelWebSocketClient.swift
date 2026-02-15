@@ -138,11 +138,13 @@ public actor TunnelWebSocketClient {
         headers.add(name: "X-Subdomain", value: config.subdomain)
         headers.add(name: "X-API-Key", value: config.apiKey)
 
-        let ws = try await WebSocket.connect(
+        try await WebSocket.connect(
             to: finalURL,
             headers: headers,
             on: eventLoopGroup.any()
-        ) { ws in
+        ) { [weak self] ws in
+            self?.webSocket = ws
+
             ws.onBinary { [weak self] (_: WebSocket, buffer: ByteBuffer) in
                 Task {
                     await self?.handleBinaryMessage(buffer)
@@ -155,8 +157,6 @@ public actor TunnelWebSocketClient {
                 }
             }
         }.get()
-
-        self.webSocket = ws
 
         try await sendConnectRequest()
     }
