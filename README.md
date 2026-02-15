@@ -35,6 +35,25 @@ cok -p 8080
 
 The above command opens a tunnel and forwards traffic to `localhost:8080`.
 
+### Development & Testing
+
+For local development and testing:
+
+```bash
+# Quick start - build and setup everything
+make all
+
+# In terminal 1: Start test HTTP server
+make test-site
+
+# In terminal 2: Start tunnel client
+make test-client
+
+# Visit: http://test-client.localhost:8080
+```
+
+See `make help` for all available commands.
+
 ### With Custom Subdomain
 ```bash
 cok -p 8080 -s myapp
@@ -56,8 +75,8 @@ cok -p 8080 -s myapp
 ### Docker
 ```bash
 docker run -d -p 8080:8080 -p 8081:8081 \
-  -e COK_API_KEY_SECRET=your-secret-key-min-32-chars \
-  -e COK_DOMAIN=tunnel.yourdomain.com \
+  -e API_KEY_SECRET=your-secret-key-min-32-chars \
+  -e BASE_DOMAIN=tunnel.yourdomain.com \
   cok-server
 ```
 
@@ -73,11 +92,11 @@ swift build -c release --product cok-server
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `COK_HTTP_PORT` | 8080 | HTTP server port for tunnel traffic |
-| `COK_WS_PORT` | 8081 | WebSocket port for client connections |
-| `COK_DOMAIN` | localhost | Base domain for subdomains |
-| `COK_MAX_TUNNELS` | 1000 | Maximum concurrent tunnels |
-| `COK_API_KEY_SECRET` | (required) | Secret for API key HMAC validation |
+| `HTTP_PORT` | 8080 | HTTP server port for tunnel traffic |
+| `WS_PORT` | 8081 | WebSocket port for client connections |
+| `BASE_DOMAIN` | localhost | Base domain for subdomains |
+| `MAX_TUNNELS` | 1000 | Maximum concurrent tunnels |
+| `API_KEY_SECRET` | (required) | Secret for API key HMAC validation |
 
 ### Reverse Proxy Setup
 

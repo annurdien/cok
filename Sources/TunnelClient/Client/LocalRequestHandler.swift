@@ -9,6 +9,7 @@ public actor LocalRequestHandler {
     private let circuitBreaker: CircuitBreaker
     private let logger: Logger
     private let config: ClientConfig
+    private let codec: JSONMessageCodec
     private var pendingRequests: [UUID: CheckedContinuation<HTTPResponseMessage, Error>] = [:]
 
     public init(
@@ -21,6 +22,7 @@ public actor LocalRequestHandler {
         self.circuitBreaker = circuitBreaker
         self.config = config
         self.logger = logger
+        self.codec = JSONMessageCodec()
     }
 
     public func handleRequest(
@@ -59,9 +61,7 @@ public actor LocalRequestHandler {
                     do {
                         self.storeContinuation(requestID: requestID, continuation: continuation)
 
-                        let payload = try JSONEncoder().encode(request)
-                        var buffer = ByteBufferAllocator().buffer(capacity: payload.count)
-                        buffer.writeBytes(payload)
+                        let buffer = try self.codec.encode(request)
 
                         let frame = try ProtocolFrame(
                             version: .current,
@@ -128,12 +128,16 @@ public actor LocalRequestHandler {
         Task {
             do {
                 switch frame.messageType {
+                case .connectResponse:
+                    try await handleConnectResponse(frame)
                 case .httpRequest:
                     try await handleHTTPRequest(frame)
                 case .httpResponse:
                     try await handleHTTPResponse(frame)
                 case .pong:
                     logger.debug("Received pong from server")
+                case .error:
+                    try await handleError(frame)
                 default:
                     logger.warning("Unexpected message type", metadata: [
                         "type": "\(frame.messageType)"
@@ -148,13 +152,7 @@ public actor LocalRequestHandler {
     }
 
     private func handleHTTPRequest(_ frame: ProtocolFrame) async throws {
-        var buffer = frame.payload
-        guard let bytes = buffer.readBytes(length: buffer.readableBytes) else {
-            throw ProtocolError.decodingFailed(reason: "Failed to read payload bytes")
-        }
-
-        let data = Data(bytes)
-        let request = try JSONDecoder().decode(HTTPRequestMessage.self, from: data)
+        let request = try codec.decode(HTTPRequestMessage.self, from: frame.payload)
 
         logger.debug("Received request from tunnel", metadata: [
             "requestID": "\(request.requestID.uuidString.prefix(8))",
@@ -162,25 +160,118 @@ public actor LocalRequestHandler {
             "path": "\(request.path)"
         ])
 
-        if let continuation = pendingRequests.removeValue(forKey: request.requestID) {
-            let response = HTTPResponseMessage(
-                requestID: request.requestID,
-                statusCode: 200,
-                headers: [],
-                body: Data()
+        // Forward the request to the local HTTP server
+        do {
+            let response = try await forwardToLocalServer(request)
+
+            // Send the response back through the tunnel
+            let responseBuffer = try codec.encode(response)
+
+            let responseFrame = try ProtocolFrame(
+                version: .current,
+                messageType: .httpResponse,
+                flags: [],
+                payload: responseBuffer
             )
-            continuation.resume(returning: response)
+
+            try await websocketClient.sendFrame(responseFrame)
+
+            logger.debug("Sent response back through tunnel", metadata: [
+                "requestID": "\(request.requestID.uuidString.prefix(8))",
+                "status": "\(response.statusCode)"
+            ])
+        } catch {
+            logger.error("Failed to forward request to local server", metadata: [
+                "requestID": "\(request.requestID.uuidString.prefix(8))",
+                "error": "\(error.localizedDescription)"
+            ])
+
+            // Send error response
+            let errorResponse = HTTPResponseMessage(
+                requestID: request.requestID,
+                statusCode: 502,
+                headers: [HTTPHeader(name: "Content-Type", value: "text/plain")],
+                body: Data("Bad Gateway: Failed to reach local server".utf8)
+            )
+
+            let responseBuffer = try codec.encode(errorResponse)
+
+            let responseFrame = try ProtocolFrame(
+                version: .current,
+                messageType: .httpResponse,
+                flags: [],
+                payload: responseBuffer
+            )
+
+            try await websocketClient.sendFrame(responseFrame)
         }
     }
 
-    private func handleHTTPResponse(_ frame: ProtocolFrame) async throws {
-        var buffer = frame.payload
-        guard let bytes = buffer.readBytes(length: buffer.readableBytes) else {
-            throw ProtocolError.decodingFailed(reason: "Failed to read payload bytes")
+    private func forwardToLocalServer(_ request: HTTPRequestMessage) async throws -> HTTPResponseMessage {
+        // Build the URL for the local server
+        let urlString = "http://\(config.localHost):\(config.localPort)\(request.path)"
+        guard let url = URL(string: urlString) else {
+            throw TunnelError.client(.invalidRequest("Invalid local URL"), context: ErrorContext(component: "RequestHandler"))
         }
 
-        let data = Data(bytes)
-        let response = try JSONDecoder().decode(HTTPResponseMessage.self, from: data)
+        // Create URLRequest
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = request.method
+
+        // Add headers
+        for header in request.headers {
+            urlRequest.addValue(header.value, forHTTPHeaderField: header.name)
+        }
+
+        // Add body if present
+        if !request.body.isEmpty {
+            urlRequest.httpBody = request.body
+        }
+
+        // Make the request using URLSession
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw TunnelError.client(.localServerUnreachable(host: config.localHost, port: config.localPort), context: ErrorContext(component: "RequestHandler"))
+        }
+
+        // Convert URLResponse to HTTPResponseMessage
+        var responseHeaders: [HTTPHeader] = []
+        for (key, value) in httpResponse.allHeaderFields {
+            if let keyStr = key as? String, let valueStr = value as? String {
+                responseHeaders.append(HTTPHeader(name: keyStr, value: valueStr))
+            }
+        }
+
+        return HTTPResponseMessage(
+            requestID: request.requestID,
+            statusCode: UInt16(httpResponse.statusCode),
+            headers: responseHeaders,
+            body: data
+        )
+    }
+
+    private func handleConnectResponse(_ frame: ProtocolFrame) async throws {
+        let response = try codec.decode(ConnectResponse.self, from: frame.payload)
+
+        logger.info("Tunnel connected successfully", metadata: [
+            "tunnelID": "\(response.tunnelID.uuidString.prefix(8))",
+            "subdomain": "\(response.subdomain)",
+            "publicURL": "\(response.publicURL)"
+        ])
+    }
+
+    private func handleError(_ frame: ProtocolFrame) async throws {
+        let errorMsg = try codec.decode(ErrorMessage.self, from: frame.payload)
+
+        logger.error("Received error from server", metadata: [
+            "code": "\(errorMsg.code)",
+            "message": "\(errorMsg.message)"
+        ])
+    }
+
+    private func handleHTTPResponse(_ frame: ProtocolFrame) async throws {
+        let response = try codec.decode(HTTPResponseMessage.self, from: frame.payload)
 
         logger.debug("Received response from tunnel", metadata: [
             "requestID": "\(response.requestID.uuidString.prefix(8))",

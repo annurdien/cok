@@ -60,7 +60,7 @@ public actor TunnelClient {
             "localPort": "\(config.localPort)"
         ])
 
-        try await localProxy.start()
+        // Note: LocalHTTPProxy not started - we forward incoming tunnel requests directly to local server
 
         try await websocketClient.connect()
 
@@ -81,7 +81,8 @@ public actor TunnelClient {
         logger.info("Stopping Cok tunnel client")
 
         await websocketClient.disconnect()
-        try await localProxy.stop()
+        // Note: localProxy not used for reverse tunnel
+        // try await localProxy.stop()
 
         logger.info("Cok tunnel client stopped")
     }

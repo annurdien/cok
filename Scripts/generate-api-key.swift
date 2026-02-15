@@ -1,6 +1,6 @@
 #!/usr/bin/env swift
 
-import Crypto
+import CryptoKit
 import Foundation
 
 /// Simple script to generate API keys for Cok tunnel clients
