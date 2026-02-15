@@ -3,6 +3,10 @@ import Logging
 import NIOCore
 import NIOHTTP1
 import TunnelCore
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+import AsyncHTTPClient
+#endif
 
 public actor LocalRequestHandler {
     private let websocketClient: TunnelWebSocketClient
@@ -11,6 +15,9 @@ public actor LocalRequestHandler {
     private let config: ClientConfig
     private let codec: JSONMessageCodec
     private var pendingRequests: [UUID: CheckedContinuation<HTTPResponseMessage, Error>] = [:]
+    #if canImport(FoundationNetworking)
+    private let httpClient: HTTPClient
+    #endif
 
     public init(
         websocketClient: TunnelWebSocketClient,
@@ -23,6 +30,9 @@ public actor LocalRequestHandler {
         self.config = config
         self.logger = logger
         self.codec = JSONMessageCodec()
+        #if canImport(FoundationNetworking)
+        self.httpClient = HTTPClient(eventLoopGroupProvider: .singleton)
+        #endif
     }
 
     public func handleRequest(
@@ -208,27 +218,35 @@ public actor LocalRequestHandler {
     }
 
     private func forwardToLocalServer(_ request: HTTPRequestMessage) async throws -> HTTPResponseMessage {
-        // Build the URL for the local server
         let urlString = "http://\(config.localHost):\(config.localPort)\(request.path)"
+        
+        #if canImport(FoundationNetworking)
+        // Linux: Use AsyncHTTPClient
+        return try await forwardToLocalServerLinux(request, urlString: urlString)
+        #else
+        // macOS: Use URLSession
+        return try await forwardToLocalServerMacOS(request, urlString: urlString)
+        #endif
+    }
+    
+    #if !canImport(FoundationNetworking)
+    // macOS implementation using URLSession
+    private func forwardToLocalServerMacOS(_ request: HTTPRequestMessage, urlString: String) async throws -> HTTPResponseMessage {
         guard let url = URL(string: urlString) else {
             throw TunnelError.client(.invalidRequest("Invalid local URL"), context: ErrorContext(component: "RequestHandler"))
         }
 
-        // Create URLRequest
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = request.method
 
-        // Add headers
         for header in request.headers {
             urlRequest.addValue(header.value, forHTTPHeaderField: header.name)
         }
 
-        // Add body if present
         if !request.body.isEmpty {
             urlRequest.httpBody = request.body
         }
 
-        // Make the request using URLSession
         let (data, response) = try await URLSession.shared.data(for: urlRequest)
 
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -238,7 +256,6 @@ public actor LocalRequestHandler {
             )
         }
 
-        // Convert URLResponse to HTTPResponseMessage
         var responseHeaders: [HTTPHeader] = []
         for (key, value) in httpResponse.allHeaderFields {
             if let keyStr = key as? String, let valueStr = value as? String {
@@ -253,6 +270,46 @@ public actor LocalRequestHandler {
             body: data
         )
     }
+    #endif
+    
+    #if canImport(FoundationNetworking)
+    // Linux implementation using AsyncHTTPClient
+    private func forwardToLocalServerLinux(_ request: HTTPRequestMessage, urlString: String) async throws -> HTTPResponseMessage {
+        var httpRequest = HTTPClientRequest(url: urlString)
+        httpRequest.method = HTTPMethod(rawValue: request.method)
+        
+        for header in request.headers {
+            httpRequest.headers.add(name: header.name, value: header.value)
+        }
+        
+        if !request.body.isEmpty {
+            httpRequest.body = .bytes(request.body)
+        }
+        
+        let response = try await httpClient.execute(httpRequest, timeout: .seconds(30))
+        
+        guard response.status.code >= 200 && response.status.code < 600 else {
+            throw TunnelError.client(
+                .localServerUnreachable(host: config.localHost, port: config.localPort),
+                context: ErrorContext(component: "RequestHandler")
+            )
+        }
+        
+        var responseHeaders: [HTTPHeader] = []
+        for header in response.headers {
+            responseHeaders.append(HTTPHeader(name: header.name, value: header.value))
+        }
+        
+        let responseBody = try await response.body.collect(upTo: 10 * 1024 * 1024) // 10MB max
+        
+        return HTTPResponseMessage(
+            requestID: request.requestID,
+            statusCode: UInt16(response.status.code),
+            headers: responseHeaders,
+            body: Data(buffer: responseBody)
+        )
+    }
+    #endif
 
     private func handleConnectResponse(_ frame: ProtocolFrame) async throws {
         let response = try codec.decode(ConnectResponse.self, from: frame.payload)

@@ -2,6 +2,11 @@ import Foundation
 import Logging
 import NIOCore
 import TunnelCore
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+import WebSocketKit
+import NIOPosix
+#endif
 
 public actor TunnelWebSocketClient {
     public enum State: Sendable {
@@ -14,7 +19,16 @@ public actor TunnelWebSocketClient {
     private let config: ClientConfig
     private let logger: Logger
     private var state: State = .disconnected
+    
+    #if !canImport(FoundationNetworking)
+    // macOS: Use URLSession
     private var webSocketTask: URLSessionWebSocketTask?
+    #else
+    // Linux: Use WebSocketKit
+    private var webSocket: WebSocket?
+    private let eventLoopGroup: MultiThreadedEventLoopGroup
+    #endif
+    
     private var reconnectAttempts: Int = 0
     private var isShuttingDown: Bool = false
     private var messageHandler: (@Sendable (ProtocolFrame) async -> Void)?
@@ -23,6 +37,9 @@ public actor TunnelWebSocketClient {
     public init(config: ClientConfig, logger: Logger) {
         self.config = config
         self.logger = logger
+        #if canImport(FoundationNetworking)
+        self.eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        #endif
     }
 
     public func connect() async throws {
@@ -74,6 +91,15 @@ public actor TunnelWebSocketClient {
     }
 
     private func performConnect() async throws {
+        #if canImport(FoundationNetworking)
+        try await performConnectLinux()
+        #else
+        try await performConnectMacOS()
+        #endif
+    }
+
+    #if !canImport(FoundationNetworking)
+    private func performConnectMacOS() async throws {
         guard let url = URL(string: config.serverURL) else {
             throw TunnelError.client(.invalidRequest("Invalid server URL"), context: ErrorContext(component: "WebSocketClient"))
         }
@@ -88,11 +114,86 @@ public actor TunnelWebSocketClient {
 
         task.resume()
 
-        // Send initial connect request
+        try await sendConnectRequest()
+    }
+    #endif
+
+    #if canImport(FoundationNetworking)
+    private func performConnectLinux() async throws {
+        guard var url = URLComponents(string: config.serverURL) else {
+            throw TunnelError.client(.invalidRequest("Invalid server URL"), context: ErrorContext(component: "WebSocketClient"))
+        }
+
+        if url.scheme == "ws" {
+            url.scheme = "http"
+        } else if url.scheme == "wss" {
+            url.scheme = "https"
+        }
+
+        guard let finalURL = url.string else {
+            throw TunnelError.client(.invalidRequest("Invalid URL"), context: ErrorContext(component: "WebSocketClient"))
+        }
+
+        var headers = HTTPHeaders()
+        headers.add(name: "X-Subdomain", value: config.subdomain)
+        headers.add(name: "X-API-Key", value: config.apiKey)
+
+        let ws = try await WebSocket.connect(
+            to: finalURL,
+            headers: headers,
+            on: eventLoopGroup.any()
+        ).get()
+
+        self.webSocket = ws
+
+        ws.onBinary { [weak self] _, buffer in
+            Task {
+                await self?.handleBinaryMessage(buffer)
+            }
+        }
+
+        ws.onClose.whenComplete { [weak self] _ in
+            Task {
+                await self?.handleDisconnect()
+            }
+        }
+
         try await sendConnectRequest()
     }
 
+    private func handleBinaryMessage(_ buffer: ByteBuffer) async {
+        var mutableBuffer = buffer
+        if let frame = try? ProtocolFrame.decode(from: &mutableBuffer) {
+            await handleIncomingFrame(frame)
+        }
+    }
+
+    private func handleDisconnect() async {
+        if !isShuttingDown {
+            logger.warning("WebSocket disconnected unexpectedly")
+            state = .disconnected
+            do {
+                try await scheduleReconnect()
+            } catch {
+                logger.error("Failed to reconnect: \(error.localizedDescription)")
+            }
+        }
+    }
+    #endif
+
     private func receiveMessages() async {
+        #if canImport(FoundationNetworking)
+        // On Linux, messages are handled via WebSocketKit callbacks
+        while !isShuttingDown && state == .connected {
+            try? await Task.sleep(for: .seconds(1))
+        }
+        #else
+        await receiveMessagesMacOS()
+        #endif
+    }
+
+    #if !canImport(FoundationNetworking)
+    private func receiveMessagesMacOS() async {
         while !isShuttingDown && state == .connected {
             do {
                 guard let task = webSocketTask else { break }
@@ -124,6 +225,7 @@ public actor TunnelWebSocketClient {
             }
         }
     }
+    #endif
 
     private func scheduleReconnect() async throws {
         guard !isShuttingDown else { return }
@@ -150,23 +252,42 @@ public actor TunnelWebSocketClient {
         receiveTask?.cancel()
         receiveTask = nil
 
+        #if canImport(FoundationNetworking)
+        do {
+            try await webSocket?.close().get()
+            self.webSocket = nil
+        } catch {
+            logger.warning("Error closing WebSocket: \(error.localizedDescription)")
+        }
+        #else
         if let task = webSocketTask {
             task.cancel(with: .goingAway, reason: nil)
             self.webSocketTask = nil
         }
+        #endif
 
         logger.info("Disconnected from tunnel server")
     }
 
     public func sendFrame(_ frame: ProtocolFrame) async throws {
-        guard let task = webSocketTask, state == .connected else {
+        guard state == .connected else {
             throw TunnelError.client(.connectionFailed("Not connected"), context: ErrorContext(component: "WebSocketClient"))
         }
 
+        #if canImport(FoundationNetworking)
+        guard let ws = webSocket else {
+            throw TunnelError.client(.connectionFailed("No WebSocket connection"), context: ErrorContext(component: "WebSocketClient"))
+        }
+        let frameData = frame.encode()
+        try await ws.send(raw: frameData.readableBytesView, opcode: .binary)
+        #else
+        guard let task = webSocketTask else {
+            throw TunnelError.client(.connectionFailed("No WebSocket task"), context: ErrorContext(component: "WebSocketClient"))
+        }
         let frameData = frame.encode().toData()
         let message = URLSessionWebSocketTask.Message.data(frameData)
-
         try await task.send(message)
+        #endif
     }
 
     public func onMessage(handler: @escaping @Sendable (ProtocolFrame) async -> Void) {
@@ -209,10 +330,17 @@ public actor TunnelWebSocketClient {
             payload: buffer
         )
 
+        #if canImport(FoundationNetworking)
+        guard let ws = webSocket else {
+            throw TunnelError.client(.connectionFailed("No connection"), context: ErrorContext(component: "WebSocketClient"))
+        }
+        let frameData = frame.encode()
+        try await ws.send(raw: frameData.readableBytesView, opcode: .binary)
+        #else
         let frameData = frame.encode().toData()
         let message = URLSessionWebSocketTask.Message.data(frameData)
-
         try await webSocketTask?.send(message)
+        #endif
 
         logger.debug("Sent connect request", metadata: [
             "subdomain": "\(config.subdomain)"
@@ -220,7 +348,8 @@ public actor TunnelWebSocketClient {
     }
 }
 
-// MARK: - ByteBuffer Extension for Data conversion
+#if !canImport(FoundationNetworking)
+// MARK: - ByteBuffer Extension for Data conversion (macOS only)
 extension ByteBuffer {
     func toData() -> Data {
         return Data(self.readableBytesView)
@@ -232,3 +361,4 @@ extension ByteBuffer {
         return buffer
     }
 }
+#endif
