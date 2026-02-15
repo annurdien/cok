@@ -219,7 +219,7 @@ public actor LocalRequestHandler {
 
     private func forwardToLocalServer(_ request: HTTPRequestMessage) async throws -> HTTPResponseMessage {
         let urlString = "http://\(config.localHost):\(config.localPort)\(request.path)"
-        
+
         #if canImport(FoundationNetworking)
         // Linux: Use AsyncHTTPClient
         return try await forwardToLocalServerLinux(request, urlString: urlString)
@@ -228,7 +228,7 @@ public actor LocalRequestHandler {
         return try await forwardToLocalServerMacOS(request, urlString: urlString)
         #endif
     }
-    
+
     #if !canImport(FoundationNetworking)
     // macOS implementation using URLSession
     private func forwardToLocalServerMacOS(_ request: HTTPRequestMessage, urlString: String) async throws -> HTTPResponseMessage {
@@ -271,37 +271,37 @@ public actor LocalRequestHandler {
         )
     }
     #endif
-    
+
     #if canImport(FoundationNetworking)
     // Linux implementation using AsyncHTTPClient
     private func forwardToLocalServerLinux(_ request: HTTPRequestMessage, urlString: String) async throws -> HTTPResponseMessage {
         var httpRequest = HTTPClientRequest(url: urlString)
         httpRequest.method = HTTPMethod(rawValue: request.method)
-        
+
         for header in request.headers {
             httpRequest.headers.add(name: header.name, value: header.value)
         }
-        
+
         if !request.body.isEmpty {
             httpRequest.body = .bytes(request.body)
         }
-        
+
         let response = try await httpClient.execute(httpRequest, timeout: .seconds(30))
-        
+
         guard response.status.code >= 200 && response.status.code < 600 else {
             throw TunnelError.client(
                 .localServerUnreachable(host: config.localHost, port: config.localPort),
                 context: ErrorContext(component: "RequestHandler")
             )
         }
-        
+
         var responseHeaders: [HTTPHeader] = []
         for header in response.headers {
             responseHeaders.append(HTTPHeader(name: header.name, value: header.value))
         }
-        
+
         let responseBody = try await response.body.collect(upTo: 10 * 1024 * 1024) // 10MB max
-        
+
         return HTTPResponseMessage(
             requestID: request.requestID,
             statusCode: UInt16(response.status.code),

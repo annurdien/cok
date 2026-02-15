@@ -19,7 +19,7 @@ public actor TunnelWebSocketClient {
     private let config: ClientConfig
     private let logger: Logger
     private var state: State = .disconnected
-    
+
     #if !canImport(FoundationNetworking)
     // macOS: Use URLSession
     private var webSocketTask: URLSessionWebSocketTask?
@@ -28,7 +28,7 @@ public actor TunnelWebSocketClient {
     private var webSocket: WebSocket?
     private let eventLoopGroup: MultiThreadedEventLoopGroup
     #endif
-    
+
     private var reconnectAttempts: Int = 0
     private var isShuttingDown: Bool = false
     private var messageHandler: (@Sendable (ProtocolFrame) async -> Void)?

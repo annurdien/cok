@@ -11,20 +11,20 @@ import TunnelCore
 final class NIOWebSocketClientHandler: ChannelInboundHandler {
     typealias InboundIn = WebSocketFrame
     typealias OutboundOut = WebSocketFrame
-    
+
     private let logger: Logger
     private let messageHandler: (@Sendable (ProtocolFrame) async -> Void)?
     private let onDisconnect: () -> Void
-    
+
     init(logger: Logger, messageHandler: (@Sendable (ProtocolFrame) async -> Void)?, onDisconnect: @escaping () -> Void) {
         self.logger = logger
         self.messageHandler = messageHandler
         self.onDisconnect = onDisconnect
     }
-    
+
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let frame = unwrapInboundIn(data)
-        
+
         switch frame.opcode {
         case .binary:
             var buffer = frame.unmaskedData
@@ -45,7 +45,7 @@ final class NIOWebSocketClientHandler: ChannelInboundHandler {
             break
         }
     }
-    
+
     func errorCaught(context: ChannelHandlerContext, error: Error) {
         logger.error("WebSocket error: \(error.localizedDescription)")
         onDisconnect()
@@ -55,17 +55,17 @@ final class NIOWebSocketClientHandler: ChannelInboundHandler {
 
 final class NIOWebSocketConnection: Sendable {
     let channel: Channel
-    
+
     init(channel: Channel) {
         self.channel = channel
     }
-    
+
     func send(_ frame: ProtocolFrame) async throws {
         let frameData = frame.encode()
         let wsFrame = WebSocketFrame(fin: true, opcode: .binary, data: frameData)
         try await channel.writeAndFlush(wsFrame)
     }
-    
+
     func close() async throws {
         let closeFrame = WebSocketFrame(fin: true, opcode: .connectionClose, data: ByteBuffer())
         try await channel.writeAndFlush(closeFrame)
