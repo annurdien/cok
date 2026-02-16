@@ -17,11 +17,13 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-log.git", from: "1.9.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "4.2.0"),
         .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.19.0"),
+        .package(url: "https://github.com/the-swift-collective/zlib.git", from: "1.3.1"),
     ],
     targets: [
         .target(
             name: "TunnelCore",
             dependencies: [
+                .product(name: "ZLib", package: "zlib"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "Logging", package: "swift-log"),

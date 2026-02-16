@@ -1,11 +1,6 @@
 import Foundation
 import NIOCore
-
-#if canImport(zlib)
-    import zlib
-#elseif canImport(CZlib)
-    import CZlib
-#endif
+import ZLib
 
 /*
 Wire format (Little Endian):
@@ -149,10 +144,8 @@ public struct ProtocolFrame: Sendable, CustomStringConvertible {
     private static func calculateCRC32(buffer: ByteBuffer) -> UInt32 {
         return buffer.withUnsafeReadableBytes { pointer in
             guard let baseAddress = pointer.baseAddress else { return 0 }
-            // zlib's crc32 takes (crc, buf, len). Initial CRC is 0.
-            // It returns a uLong (UInt on most platforms, but we need UInt32).
-            // Casts are necessary.
-            let crc = crc32(0, baseAddress.assumingMemoryBound(to: Bytef.self), uInt(pointer.count))
+            let crc = crc32(
+                0, baseAddress.assumingMemoryBound(to: UInt8.self), UInt32(pointer.count))
             return UInt32(crc)
         }
     }
