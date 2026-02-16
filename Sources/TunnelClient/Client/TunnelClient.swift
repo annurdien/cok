@@ -62,14 +62,12 @@ public actor TunnelClient {
                 "localPort": "\(config.localPort)",
             ])
 
-        // Note: LocalHTTPProxy not started - we forward incoming tunnel requests directly to local server
-
         try await tcpClient.connect()
 
         logger.info(
             "Cok tunnel client is running",
             metadata: [
-                "publicURL": "https://\(config.subdomain).tunnel.example.com",  // This should come from connect response ideally
+                "publicURL": "https://\(config.subdomain).tunnel.example.com",
                 "localURL": "http://\(config.localHost):\(config.localPort)",
             ])
     }
@@ -85,8 +83,6 @@ public actor TunnelClient {
         logger.info("Stopping Cok tunnel client")
 
         await tcpClient.disconnect()
-        // Note: localProxy not used for reverse tunnel
-        // try await localProxy.stop()
 
         logger.info("Cok tunnel client stopped")
     }

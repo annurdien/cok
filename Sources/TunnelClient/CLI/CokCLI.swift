@@ -83,19 +83,16 @@ struct CokCLI: AsyncParsableCommand {
     }
 
     private func parseServerAddress(_ address: String) -> (String, Int) {
-        // Handle URL format
         if let url = URL(string: address), let host = url.host {
             let port = url.port ?? 5000
             return (host, port)
         }
 
-        // Handle host:port format
         let parts = address.split(separator: ":")
         if parts.count == 2, let port = Int(parts[1]) {
             return (String(parts[0]), port)
         }
 
-        // Default to address as host and default port
         return (address, 5000)
     }
 }

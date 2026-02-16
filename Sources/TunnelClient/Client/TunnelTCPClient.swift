@@ -1,6 +1,6 @@
 import Foundation
 import Logging
-import NIOCore
+@preconcurrency import NIOCore
 import NIOPosix
 import TunnelCore
 
@@ -35,32 +35,24 @@ public actor TunnelTCPClient {
             "Connecting to tunnel server",
             metadata: [
                 "host": "\(config.serverHost)",
-                "port": "\(config.serverPort)",  // Assuming config has port? ServerConfig has 5000 default.
+                "port": "\(config.serverPort)",
             ])
 
         do {
             let bootstrap = ClientBootstrap(group: group)
                 .channelOption(ChannelOptions.socketOption(.so_keepalive), value: 1)
                 .channelInitializer { channel in
-                    channel.pipeline.addHandler(ByteToMessageHandler(ProtocolFrameDecoder()))
-                        .flatMap {
-                            channel.pipeline.addHandler(
-                                MessageToByteHandler(ProtocolFrameEncoder()))
-                        }.flatMap {
-                            channel.pipeline.addHandler(TCPClientHandler(actor: self))
-                        }
+                    let decoder = UncheckedInboundHandler(
+                        ByteToMessageHandler(ProtocolFrameDecoder()))
+                    let encoder = UncheckedOutboundHandler(
+                        MessageToByteHandler(ProtocolFrameEncoder()))
+
+                    return channel.pipeline.addHandler(decoder).flatMap {
+                        channel.pipeline.addHandler(encoder)
+                    }.flatMap {
+                        channel.pipeline.addHandler(TCPClientHandler(actor: self))
+                    }
                 }
-
-            // Using config.serverURL as host, need to parse if it's a URL or just host.
-            // ClientConfig usually has serverHost and serverPort?
-            // I need to check ClientConfig definition.
-            // For now assuming serverURL is host string or similar.
-            // Wait, I should check ClientConfig.
-            // I'll use config.serverHost if available or extract from URL.
-
-            // Let's assume config.serverURL is actually the host here based on typical usage
-            // or I'll fix it after checking ClientConfig.
-            // Taking a safe bet: existing code used websocketClient which took config.
 
             let channel = try await bootstrap.connect(
                 host: config.serverHost, port: config.serverPort
@@ -70,10 +62,8 @@ public actor TunnelTCPClient {
 
             logger.info("Connected to tunnel server")
 
-            // Send Connect Request
             try await sendConnectRequest()
 
-            // Handle close
             channel.closeFuture.whenComplete { [weak self] (_: Result<Void, Error>) in
                 Task { [weak self] in
                     await self?.handleClose()
@@ -115,7 +105,6 @@ public actor TunnelTCPClient {
         return state == .connected
     }
 
-    // Internal method called by handler
     nonisolated func handleIncomingFrame(_ frame: ProtocolFrame) {
         Task {
             await self._handleIncomingFrame(frame)
@@ -137,7 +126,7 @@ public actor TunnelTCPClient {
         let request = ConnectRequest(
             apiKey: config.apiKey,
             requestedSubdomain: config.subdomain,
-            clientVersion: "0.1.0"  // Should come from config or constant
+            clientVersion: "0.1.0"
         )
 
         let payload = try BinaryMessageCodec().encode(request)
@@ -149,6 +138,11 @@ public actor TunnelTCPClient {
 
         try await sendFrame(frame)
     }
+}
+
+struct UncheckedSendable<T>: @unchecked Sendable {
+    let value: T
+    init(_ value: T) { self.value = value }
 }
 
 final class TCPClientHandler: ChannelInboundHandler, Sendable {

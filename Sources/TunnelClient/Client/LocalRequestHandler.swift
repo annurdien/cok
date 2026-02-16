@@ -59,9 +59,10 @@ public actor LocalRequestHandler {
         }
     }
 
-    private func sendAndWaitForResponse(requestID: UUID, request: HTTPRequestMessage) async throws
-        -> HTTPResponseMessage
-    {
+    private func sendAndWaitForResponse(
+        requestID: UUID,
+        request: HTTPRequestMessage
+    ) async throws -> HTTPResponseMessage {
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 Task {
@@ -90,21 +91,24 @@ public actor LocalRequestHandler {
                         Task {
                             try await Task.sleep(for: .seconds(self.config.requestTimeout))
 
-                            if let storedContinuation = self.removeContinuation(
-                                requestID: requestID)
-                            {
-                                self.logger.warning(
-                                    "Request timeout",
-                                    metadata: [
-                                        "requestID": "\(requestID.uuidString.prefix(8))"
-                                    ])
-
-                                let err = TunnelError.client(
-                                    .timeout,
-                                    context: ErrorContext(component: "RequestHandler")
-                                )
-                                storedContinuation.resume(throwing: err)
+                            guard
+                                let storedContinuation = self.removeContinuation(
+                                    requestID: requestID)
+                            else {
+                                return
                             }
+
+                            self.logger.warning(
+                                "Request timeout",
+                                metadata: [
+                                    "requestID": "\(requestID.uuidString.prefix(8))"
+                                ])
+
+                            let err = TunnelError.client(
+                                .timeout,
+                                context: ErrorContext(component: "RequestHandler")
+                            )
+                            storedContinuation.resume(throwing: err)
                         }
                     } catch {
                         _ = self.removeContinuation(requestID: requestID)
@@ -185,11 +189,9 @@ public actor LocalRequestHandler {
                 "path": "\(request.path)",
             ])
 
-        // Forward the request to the local HTTP server
         do {
             let response = try await forwardToLocalServer(request)
 
-            // Send the response back through the tunnel
             let responseBuffer = try codec.encode(response)
 
             let responseFrame = try ProtocolFrame(
@@ -215,7 +217,6 @@ public actor LocalRequestHandler {
                     "error": "\(error.localizedDescription)",
                 ])
 
-            // Send error response
             let errorResponse = HTTPResponseMessage(
                 requestID: request.requestID,
                 statusCode: 502,
@@ -236,9 +237,9 @@ public actor LocalRequestHandler {
         }
     }
 
-    private func forwardToLocalServer(_ request: HTTPRequestMessage) async throws
-        -> HTTPResponseMessage
-    {
+    private func forwardToLocalServer(
+        _ request: HTTPRequestMessage
+    ) async throws -> HTTPResponseMessage {
         let urlString = "http://\(config.localHost):\(config.localPort)\(request.path)"
 
         var httpRequest = HTTPClientRequest(url: urlString)
@@ -254,15 +255,12 @@ public actor LocalRequestHandler {
 
         let response = try await httpClient.execute(httpRequest, timeout: .seconds(30))
 
-        // We accept redirection (3xx), client error (4xx) and server error (5xx) as valid responses from local app
-        // Only if connection fails completely we should return gateway error, which likely httpClient.execute handles by throwing
-
         var responseHeaders: [HTTPHeader] = []
         for header in response.headers {
             responseHeaders.append(HTTPHeader(name: header.name, value: header.value))
         }
 
-        let responseBody = try await response.body.collect(upTo: 10 * 1024 * 1024)  // 10MB max
+        let responseBody = try await response.body.collect(upTo: 10 * 1024 * 1024)
 
         return HTTPResponseMessage(
             requestID: request.requestID,
@@ -316,9 +314,11 @@ public actor LocalRequestHandler {
         }
     }
 
-    private func convertToProtocolMessage(head: HTTPRequestHead, body: ByteBuffer, requestID: UUID)
-        -> HTTPRequestMessage
-    {
+    private func convertToProtocolMessage(
+        head: HTTPRequestHead,
+        body: ByteBuffer,
+        requestID: UUID
+    ) -> HTTPRequestMessage {
         let headers = head.headers.map { HTTPHeader(name: $0.name, value: $0.value) }
 
         var bodyData = Data()

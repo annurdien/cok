@@ -389,6 +389,7 @@ public struct ErrorMessage: BinarySerializable, Sendable, CustomStringConvertibl
         guard let count = buffer.readInteger(as: UInt32.self) else {
             throw BinaryError.decodingError("metadata count")
         }
+        // swiftlint:disable:next empty_count
         if count > 0 {
             var metadata: [String: String] = [:]
             for _ in 0..<count {

@@ -29,13 +29,10 @@ public struct BinaryMessageCodec: MessageCodec {
         message.serialize(into: &buffer)
     }
 
-    public func decode<T: BinarySerializable & Sendable>(_ type: T.Type, from buffer: ByteBuffer)
-        throws -> T
-    {
+    public func decode<T: BinarySerializable & Sendable>(
+        _ type: T.Type, from buffer: ByteBuffer
+    ) throws -> T {
         var buffer = buffer
         return try T(from: &buffer)
     }
 }
-
-// Deprecate JSONMessageCodec or remove it
-// I will remove it as per instruction "Replace JSONMessageCodec ..."

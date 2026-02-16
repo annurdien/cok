@@ -1,7 +1,7 @@
 import Foundation
 import Logging
 import NIOConcurrencyHelpers
-import NIOCore
+@preconcurrency import NIOCore
 import NIOPosix
 import TunnelCore
 
@@ -12,7 +12,6 @@ final class TCPServer: Sendable {
     private let connectionManager: ConnectionManager
     private let authService: AuthService
     private let requestTracker: RequestTracker
-    // private let rateLimiter: RateLimiter // Not used in TCP handler for now effectively, or we can add it later
 
     private let isRunning = ManagedAtomic(false)
 
@@ -36,16 +35,21 @@ final class TCPServer: Sendable {
             .serverChannelOption(ChannelOptions.backlog, value: 256)
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { channel in
-                channel.pipeline.addHandlers([
-                    ByteToMessageHandler(ProtocolFrameDecoder()),
-                    MessageToByteHandler(ProtocolFrameEncoder()),
-                    TCPHandler(
-                        logger: self.logger,
-                        connectionManager: self.connectionManager,
-                        authService: self.authService,
-                        requestTracker: self.requestTracker
-                    ),
-                ])
+                let decoder = UncheckedInboundHandler(ByteToMessageHandler(ProtocolFrameDecoder()))
+                let encoder = UncheckedOutboundHandler(MessageToByteHandler(ProtocolFrameEncoder()))
+
+                return channel.pipeline.addHandler(decoder).flatMap {
+                    channel.pipeline.addHandler(encoder)
+                }.flatMap {
+                    channel.pipeline.addHandler(
+                        TCPHandler(
+                            logger: self.logger,
+                            connectionManager: self.connectionManager,
+                            authService: self.authService,
+                            requestTracker: self.requestTracker
+                        )
+                    )
+                }
             }
             .childChannelOption(ChannelOptions.socketOption(.so_keepalive), value: 1)
 
@@ -71,7 +75,6 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
     private let requestTracker: RequestTracker
     private let codec: MessageCodec
 
-    // State to track if this connection is authenticated and registered
     private let tunnelID: ManagedAtomic<UUID?> = ManagedAtomic(nil)
 
     init(
@@ -111,9 +114,7 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
         }
     }
 
-    private func handleConnectRequest(channel: Channel, payload: ByteBuffer)
-        async throws
-    {
+    private func handleConnectRequest(channel: Channel, payload: ByteBuffer) async throws {
         let request = try codec.decode(ConnectRequest.self, from: payload)
 
         logger.info(
@@ -121,31 +122,26 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
             metadata: ["subdomain": "\(request.requestedSubdomain ?? "auto")"])
 
         do {
-            // Validate API Key
             guard let apiKey = await authService.validateAPIKey(request.apiKey) else {
                 throw ClientError.authenticationFailed
             }
 
-            // Initial check if requested subdomain matches
             if let requested = request.requestedSubdomain, apiKey.subdomain != requested {
                 throw ClientError.invalidSubdomain(requested)
             }
 
-            // Register Tunnel
             let tunnel = try await connectionManager.registerTunnel(
                 subdomain: apiKey.subdomain,
                 apiKey: request.apiKey,
                 channel: channel
             )
 
-            // Generate Session Token
             let token = try await authService.generateSessionToken(
                 tunnelID: tunnel.id,
                 subdomain: apiKey.subdomain,
                 apiKey: request.apiKey
             )
 
-            // Send Success Response
             let response = ConnectResponse(
                 tunnelID: tunnel.id,
                 subdomain: apiKey.subdomain,
@@ -156,13 +152,11 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
 
             try await send(response, type: .connectResponse, channel: channel)
 
-            // Update state
             tunnelID.set(tunnel.id)
 
         } catch {
             logger.error("Connection failed", metadata: ["error": "\(error)"])
 
-            // Map error to code
             let code: UInt16
             let message: String
 
@@ -192,21 +186,17 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
                 message = "Internal server error"
             }
 
-            // Send Error Response
             let response = ErrorMessage(
                 code: code,
                 message: message
             )
             try await send(response, type: .error, channel: channel)
 
-            // Close connection after error
             channel.close(promise: nil)
         }
     }
 
-    private func handleHTTPResponse(channel: Channel, payload: ByteBuffer)
-        async throws
-    {
+    private func handleHTTPResponse(channel: Channel, payload: ByteBuffer) async throws {
         let response = try codec.decode(HTTPResponseMessage.self, from: payload)
         await requestTracker.complete(requestID: response.requestID, response: response)
     }
@@ -233,28 +223,15 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
     }
 
     func channelInactive(context: ChannelHandlerContext) {
-        // We can't easily know the tunnelID here unless we stored it.
-        // But the channel itself is used in ConnectionManager to track tunnels.
-        // ConnectionManager handles disconnection if the channel closes?
-        // Actually ConnectionManager listens to channel close future usually, OR we should explicitly unregister.
-        // But ConnectionManager.disconnectAll closes channels.
-        // If client disconnects, we should probably unregister.
-        // For now, relies on the fact that ConnectionManager stores the channel.
-        // Ideally we should unregister here if we knew the ID.
-        // Since we don't store ID on the separate actor easily without invalidating sendable.
-        // Let's rely on ConnectionManager's cleanup if it monitors channels,
-        // OR we can find the tunnel by channel? ConnectionManager doesn't support that efficiently.
-        // Use a simple task to iterate and find? Efficient? No.
-
-        // Better: When registering, we can store the tunnelID in this handler?
-        // TCPHandler is a class, it can have state.
-        // I added `tunnelID` property.
-
-        // However, we need to set it.
+        if let id = tunnelID.get() {
+            let manager = self.connectionManager
+            Task {
+                await manager.unregisterTunnel(id: id)
+            }
+        }
     }
 }
 
-// Helper for atomic bool or similar since we need Sendable
 class ManagedAtomic<T: Sendable>: @unchecked Sendable {
     private var value: T
     private let lock = NIOLock()

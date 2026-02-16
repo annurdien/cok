@@ -35,9 +35,11 @@ public actor ConnectionManager {
         self.codec = codec
     }
 
-    public func registerTunnel(subdomain: String, apiKey: String, channel: Channel) throws
-        -> TunnelConnection
-    {
+    public func registerTunnel(
+        subdomain: String,
+        apiKey: String,
+        channel: Channel
+    ) throws -> TunnelConnection {
         guard !subdomain.isEmpty else {
             throw ServerError.internalError("Subdomain cannot be empty")
         }

@@ -41,8 +41,6 @@ public actor AuthService {
         self.jwtService = JWTService(secret: secret)
     }
 
-    // MARK: - API Key Management
-
     public func validateAPIKey(_ key: String) -> APIKey? {
         guard let apiKey = apiKeys[key], !apiKey.isExpired else {
             return nil
@@ -60,8 +58,10 @@ public actor AuthService {
         }
     }
 
-    public func createAPIKey(for subdomain: String, expiresIn: TimeInterval? = nil) throws -> APIKey
-    {
+    public func createAPIKey(
+        for subdomain: String,
+        expiresIn: TimeInterval? = nil
+    ) throws -> APIKey {
         let timestamp = Date().timeIntervalSince1970
         let message = "\(subdomain):\(UUID().uuidString):\(timestamp)"
         let signature = HMAC<SHA256>.authenticationCode(
@@ -84,8 +84,11 @@ public actor AuthService {
         return Array(apiKeys.values)
     }
 
-    public func verifyAPIKeyHMAC(_ key: String, subdomain: String, timestamp: TimeInterval) -> Bool
-    {
+    public func verifyAPIKeyHMAC(
+        _ key: String,
+        subdomain: String,
+        timestamp: TimeInterval
+    ) -> Bool {
         let message = "\(subdomain):\(timestamp)"
         guard let keyData = Data(hexString: key) else { return false }
         return HMAC<SHA256>.isValidAuthenticationCode(
@@ -95,12 +98,11 @@ public actor AuthService {
         )
     }
 
-    // MARK: - JWT Token Management
     public func generateSessionToken(
         tunnelID: UUID,
         subdomain: String,
         apiKey: String,
-        expiresIn: TimeInterval = 86400  // 24 hours
+        expiresIn: TimeInterval = 86400
     ) throws -> String {
         let claims = JWTService.Claims(
             subject: tunnelID.uuidString,
@@ -118,13 +120,13 @@ public actor AuthService {
         return try jwtService.validateToken(token)
     }
 
-    public func refreshSessionToken(_ token: String, expiresIn: TimeInterval = 86400) throws
-        -> String
-    {
+    public func refreshSessionToken(
+        _ token: String,
+        expiresIn: TimeInterval = 86400
+    ) throws -> String {
         return try jwtService.refreshToken(token, expiresIn: expiresIn)
     }
 
-    // MARK: - Cleanup
     public func cleanupExpiredKeys() {
         apiKeys = apiKeys.filter { !$0.value.isExpired }
     }

@@ -1,6 +1,7 @@
-import XCTest
 import Logging
 import NIOCore
+import XCTest
+
 @testable import TunnelCore
 @testable import TunnelServer
 
@@ -71,7 +72,7 @@ final class RequestTrackerTests: XCTestCase, @unchecked Sendable {
         let requestID = UUID()
 
         do {
-            try await shortTracker.track(requestID: requestID)
+            _ = try await shortTracker.track(requestID: requestID)
             XCTFail("Should have timed out")
         } catch {
             XCTAssertTrue(error is TunnelError)

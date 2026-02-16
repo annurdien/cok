@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import TunnelCore
 
 final class InputSanitizerTests: XCTestCase {
@@ -8,7 +9,7 @@ final class InputSanitizerTests: XCTestCase {
             "hello world",
             "test-string_123",
             "normal text with spaces",
-            "multi\nline\ntext"
+            "multi\nline\ntext",
         ]
 
         for input in validInputs {
@@ -41,12 +42,12 @@ final class InputSanitizerTests: XCTestCase {
             "'; DROP TABLE users--",
             "1' OR '1'='1",
             "admin'--",
-            "1; DELETE FROM users"
+            "1; DELETE FROM users",
         ]
 
         for attempt in sqlInjectionAttempts {
             XCTAssertThrowsError(try InputSanitizer.sanitizeString(attempt)) { error in
-                 guard case InputSanitizer.SanitizationError.containsSQLInjection = error else {
+                guard case InputSanitizer.SanitizationError.containsSQLInjection = error else {
                     XCTFail("Expected SQL injection error for '\(attempt)', got \(error)")
                     return
                 }
@@ -59,7 +60,7 @@ final class InputSanitizerTests: XCTestCase {
             "<script>alert('xss')</script>",
             "javascript:alert('xss')",
             "<iframe src='evil.com'>",
-            "onerror=alert('xss')"
+            "onerror=alert('xss')",
         ]
 
         for attempt in xssAttempts {
@@ -76,7 +77,7 @@ final class InputSanitizerTests: XCTestCase {
         let validHeaders = [
             "application/json",
             "Bearer token123",
-            "en-US,en;q=0.9"
+            "en-US,en;q=0.9",
         ]
 
         for header in validHeaders {
@@ -93,7 +94,7 @@ final class InputSanitizerTests: XCTestCase {
         let validPaths = [
             "/api/v1/users",
             "/path/to/resource",
-            "/test"
+            "/test",
         ]
 
         for path in validPaths {
@@ -105,7 +106,7 @@ final class InputSanitizerTests: XCTestCase {
         let traversalAttempts = [
             "../../../etc/passwd",
             "/path/../../../secret",
-            "..\\..\\..\\windows\\system32"
+            "..\\..\\..\\windows\\system32",
         ]
 
         for attempt in traversalAttempts {
@@ -132,8 +133,8 @@ final class InputSanitizerTests: XCTestCase {
     func testValidateAPIKeyInvalidLength() {
         let invalidKeys = [
             "short",
-            String(repeating: "a", count: 32), // Too short
-            String(repeating: "a", count: 128)  // Too long
+            String(repeating: "a", count: 32),  // Too short
+            String(repeating: "a", count: 128),  // Too long
         ]
 
         for key in invalidKeys {
@@ -142,7 +143,7 @@ final class InputSanitizerTests: XCTestCase {
     }
 
     func testValidateAPIKeyInvalidCharacters() {
-        let invalidKey = String(repeating: "x", count: 64)
+        let _ = String(repeating: "x", count: 64)
         // 'x' is valid hex, but let's test with truly invalid chars
         let reallyInvalid = String(repeating: "g", count: 64)
         XCTAssertThrowsError(try InputSanitizer.validateAPIKey(reallyInvalid))

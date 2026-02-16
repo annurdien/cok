@@ -21,7 +21,6 @@ logger.info(
 let connectionManager = ConnectionManager(maxConnections: config.maxTunnels, logger: logger)
 let authService = AuthService(secret: config.apiKeySecret)
 
-// Pre-create test API key for development (if TEST_SUBDOMAIN env var is set)
 if let testSubdomain = ProcessInfo.processInfo.environment["TEST_SUBDOMAIN"] {
     do {
         let testKey = try await authService.createAPIKey(for: testSubdomain)
@@ -32,7 +31,6 @@ if let testSubdomain = ProcessInfo.processInfo.environment["TEST_SUBDOMAIN"] {
                 "key": "\(testKey.key)",
             ])
 
-        // Write key to file for client to use
         let keyFilePath = FileManager.default.currentDirectoryPath + "/.api_key.tmp"
         try? testKey.key.write(toFile: keyFilePath, atomically: true, encoding: .utf8)
     } catch {

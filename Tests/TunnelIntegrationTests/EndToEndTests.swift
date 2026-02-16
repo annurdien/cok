@@ -32,7 +32,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
         let validated = await authService.validateAPIKey(apiKey.key)
         XCTAssertNotNil(validated)
 
-        try SubdomainValidator.validate("myapp")
+        _ = try SubdomainValidator.validate("myapp")
 
         let tunnel = try await connectionManager.registerTunnel(
             subdomain: "myapp",
@@ -199,7 +199,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
             payload: payload
         )
 
-        let encoded = try frame.encode()
+        let encoded = frame.encode()
 
         var buffer = encoded
         let decoded = try ProtocolFrame.decode(from: &buffer)

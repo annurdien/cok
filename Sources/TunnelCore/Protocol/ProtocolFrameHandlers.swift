@@ -1,13 +1,14 @@
 import NIOCore
 
-public final class ProtocolFrameDecoder: ByteToMessageDecoder {
+public final class ProtocolFrameDecoder: ByteToMessageDecoder, Sendable {
     public typealias InboundOut = ProtocolFrame
 
     public init() {}
 
-    public func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws
-        -> DecodingState
-    {
+    public func decode(
+        context: ChannelHandlerContext,
+        buffer: inout ByteBuffer
+    ) throws -> DecodingState {
         // Keep track of the initial reader index to reset if we need more data
         let startReaderIndex = buffer.readerIndex
 
@@ -29,14 +30,16 @@ public final class ProtocolFrameDecoder: ByteToMessageDecoder {
         }
     }
 
-    public func decodeLast(context: ChannelHandlerContext, buffer: inout ByteBuffer, seenEOF: Bool)
-        throws -> DecodingState
-    {
+    public func decodeLast(
+        context: ChannelHandlerContext,
+        buffer: inout ByteBuffer,
+        seenEOF: Bool
+    ) throws -> DecodingState {
         return try decode(context: context, buffer: &buffer)
     }
 }
 
-public final class ProtocolFrameEncoder: MessageToByteEncoder {
+public final class ProtocolFrameEncoder: MessageToByteEncoder, Sendable {
     public typealias OutboundIn = ProtocolFrame
 
     public init() {}
