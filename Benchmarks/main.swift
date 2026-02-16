@@ -1,8 +1,9 @@
 import Foundation
 import NIOCore
 import TunnelCore
+
 #if os(Linux)
-import Glibc
+    import Glibc
 #endif
 
 struct Benchmark {
@@ -11,7 +12,10 @@ struct Benchmark {
     let warmupIterations: Int
     let operation: () async throws -> Void
 
-    init(name: String, iterations: Int = 10000, warmupIterations: Int = 100, operation: @escaping () async throws -> Void) {
+    init(
+        name: String, iterations: Int = 10000, warmupIterations: Int = 100,
+        operation: @escaping () async throws -> Void
+    ) {
         self.name = name
         self.iterations = iterations
         self.warmupIterations = warmupIterations
@@ -54,7 +58,8 @@ struct BenchmarkResult: CustomStringConvertible {
 
     var description: String {
         let avgMicro = averageTime * 1_000_000
-        return "\(name): \(String(format: "%.2f", opsPerSecond)) ops/s, avg: \(String(format: "%.2f", avgMicro))µs"
+        return
+            "\(name): \(String(format: "%.2f", opsPerSecond)) ops/s, avg: \(String(format: "%.2f", avgMicro))µs"
     }
 }
 
@@ -79,8 +84,8 @@ struct BenchmarkRunner {
         results.append(try await bufferPoolBenchmark())
         results.append(try await protocolFrameEncodeBenchmark())
         results.append(try await protocolFrameDecodeBenchmark())
-        results.append(try await jsonCodecEncodeBenchmark())
-        results.append(try await jsonCodecDecodeBenchmark())
+        results.append(try await binaryCodecEncodeBenchmark())
+        results.append(try await binaryCodecDecodeBenchmark())
         results.append(try await rateLimiterBenchmark())
         results.append(try await subdomainValidatorBenchmark())
 
@@ -119,21 +124,21 @@ struct BenchmarkRunner {
         }.run()
     }
 
-    static func jsonCodecEncodeBenchmark() async throws -> BenchmarkResult {
-        let codec = JSONMessageCodec()
+    static func binaryCodecEncodeBenchmark() async throws -> BenchmarkResult {
+        let codec = BinaryMessageCodec()
         let message = PingMessage(timestamp: Date())
 
-        return try await Benchmark(name: "JSON encode", iterations: 100000) {
+        return try await Benchmark(name: "Binary encode", iterations: 100000) {
             _ = try codec.encode(message)
         }.run()
     }
 
-    static func jsonCodecDecodeBenchmark() async throws -> BenchmarkResult {
-        let codec = JSONMessageCodec()
+    static func binaryCodecDecodeBenchmark() async throws -> BenchmarkResult {
+        let codec = BinaryMessageCodec()
         let message = PingMessage(timestamp: Date())
         let buffer = try codec.encode(message)
 
-        return try await Benchmark(name: "JSON decode", iterations: 100000) {
+        return try await Benchmark(name: "Binary decode", iterations: 100000) {
             _ = try codec.decode(PingMessage.self, from: buffer)
         }.run()
     }

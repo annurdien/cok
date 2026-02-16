@@ -1,7 +1,8 @@
 import Foundation
 
 public struct ClientConfig: Sendable {
-    public let serverURL: String
+    public let serverHost: String
+    public let serverPort: Int
     public let subdomain: String
     public let apiKey: String
     public let localHost: String
@@ -14,7 +15,8 @@ public struct ClientConfig: Sendable {
     public let circuitBreakerTimeout: TimeInterval
 
     public init(
-        serverURL: String,
+        serverHost: String,
+        serverPort: Int = 5000,
         subdomain: String,
         apiKey: String,
         localHost: String = "localhost",
@@ -26,7 +28,8 @@ public struct ClientConfig: Sendable {
         circuitBreakerThreshold: Int = 5,
         circuitBreakerTimeout: TimeInterval = 60.0
     ) {
-        self.serverURL = serverURL
+        self.serverHost = serverHost
+        self.serverPort = serverPort
         self.subdomain = subdomain
         self.apiKey = apiKey
         self.localHost = localHost
@@ -40,9 +43,12 @@ public struct ClientConfig: Sendable {
     }
 
     public static func fromEnvironment() throws -> ClientConfig {
-        guard let serverURL = ProcessInfo.processInfo.environment["COK_SERVER_URL"] else {
-            throw ConfigError.missingRequired("COK_SERVER_URL")
+        guard let serverHost = ProcessInfo.processInfo.environment["COK_SERVER_HOST"] else {
+            throw ConfigError.missingRequired("COK_SERVER_HOST")
         }
+
+        let serverPort =
+            Int(ProcessInfo.processInfo.environment["COK_SERVER_PORT"] ?? "5000") ?? 5000
 
         guard let subdomain = ProcessInfo.processInfo.environment["COK_SUBDOMAIN"] else {
             throw ConfigError.missingRequired("COK_SUBDOMAIN")
@@ -56,7 +62,8 @@ public struct ClientConfig: Sendable {
         let localPort = Int(ProcessInfo.processInfo.environment["COK_LOCAL_PORT"] ?? "3000") ?? 3000
 
         return ClientConfig(
-            serverURL: serverURL,
+            serverHost: serverHost,
+            serverPort: serverPort,
             subdomain: subdomain,
             apiKey: apiKey,
             localHost: localHost,
@@ -65,8 +72,12 @@ public struct ClientConfig: Sendable {
     }
 
     public func validate() throws {
-        guard let url = URL(string: serverURL), url.scheme == "wss" || url.scheme == "ws" else {
-            throw ConfigError.invalidURL(serverURL)
+        guard !serverHost.isEmpty else {
+            throw ConfigError.invalidHost(serverHost)
+        }
+
+        guard serverPort > 0, serverPort <= 65535 else {
+            throw ConfigError.invalidPort(serverPort)
         }
 
         guard !subdomain.isEmpty, subdomain.count <= 63 else {

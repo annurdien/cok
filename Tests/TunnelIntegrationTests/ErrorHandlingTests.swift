@@ -1,9 +1,9 @@
-import XCTest
 import Logging
 import NIOCore
 import NIOEmbedded
 import NIOHTTP1
-import NIOWebSocket
+import XCTest
+
 @testable import TunnelCore
 @testable import TunnelServer
 
@@ -24,7 +24,7 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
         let requestID = UUID()
 
         do {
-            try await shortTracker.track(requestID: requestID)
+            _ = try await shortTracker.track(requestID: requestID)
             XCTFail("Should have timed out")
         } catch {
             XCTAssertTrue(error is TunnelError)
@@ -38,7 +38,7 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
             method: "GET",
             path: "/",
             headers: [],
-            body: Data(),
+            body: ByteBuffer(),
             remoteAddress: "localhost"
         )
 
@@ -67,7 +67,8 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
         _ = try await smallManager.registerTunnel(subdomain: "test2", apiKey: "key2", channel: ch2)
 
         do {
-            _ = try await smallManager.registerTunnel(subdomain: "test3", apiKey: "key3", channel: ch3)
+            _ = try await smallManager.registerTunnel(
+                subdomain: "test3", apiKey: "key3", channel: ch3)
             XCTFail("Should have rejected connection")
         } catch {
             XCTAssertTrue(error is ServerError)
@@ -124,7 +125,7 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
     }
 
     func testInvalidProtocolFrame() async throws {
-        let channel = EmbeddedChannel()
+        let channel = EmbeddedChannel(handler: ByteToMessageHandler(ProtocolFrameDecoder()))
         _ = try await connectionManager.registerTunnel(
             subdomain: "test",
             apiKey: "key123",
@@ -132,17 +133,19 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
         )
 
         var invalidBuffer = ByteBufferAllocator().buffer(capacity: 10)
-        invalidBuffer.writeString("notaframe")
-
-        let wsFrame = WebSocketFrame(
-            fin: true,
-            opcode: .binary,
-            data: invalidBuffer
-        )
+        // Invalid version (0xFF), valid rest (type, flags, len=0) to ensure it tries validity check
+        invalidBuffer.writeInteger(UInt8(0xFF))  // Version
+        invalidBuffer.writeInteger(UInt8(MessageType.connectRequest.rawValue))  // Type
+        invalidBuffer.writeInteger(UInt8(0))  // Flags
+        invalidBuffer.writeInteger(UInt32(0))  // Payload Length
+        // CRC (4 bytes, just zeros or something)
+        invalidBuffer.writeInteger(UInt32(0))
 
         do {
-            try channel.writeInbound(wsFrame)
+            try channel.writeInbound(invalidBuffer)
+            XCTFail("Should have thrown error")
         } catch {
+            // It should throw ProtocolError.unsupportedVersion
             XCTAssertTrue(error is ProtocolError || error is DecodingError)
         }
 
@@ -154,7 +157,7 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
         let requestID = UUID()
 
         do {
-            try await shortTracker.track(requestID: requestID)
+            _ = try await shortTracker.track(requestID: requestID)
             XCTFail("Should have timed out")
         } catch {
             XCTAssertTrue(error is TunnelError)
@@ -164,7 +167,7 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
             requestID: requestID,
             statusCode: 200,
             headers: [],
-            body: Data()
+            body: ByteBuffer()
         )
 
         await shortTracker.complete(requestID: requestID, response: response)
@@ -206,30 +209,28 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
             channel: channel
         )
 
-        let largeBody = Data(repeating: 65, count: 1024 * 1024)
+        var largeBuffer = ByteBufferAllocator().buffer(capacity: 1024 * 1024)
+        largeBuffer.writeBytes(Array(repeating: UInt8(65), count: 1024 * 1024))
+
         let request = HTTPRequestMessage(
             requestID: UUID(),
             method: "POST",
             path: "/upload",
             headers: [HTTPHeader(name: "content-type", value: "application/octet-stream")],
-            body: largeBody,
+            body: largeBuffer,
             remoteAddress: "localhost"
         )
 
         try await connectionManager.sendRequest(tunnelID: tunnel.id, request: request)
 
-        let frame = try channel.readOutbound(as: WebSocketFrame.self)
+        let frame = try channel.readOutbound(as: ProtocolFrame.self)
         XCTAssertNotNil(frame)
 
-        var frameData = frame!.unmaskedData
-        let decoded = try ProtocolFrame.decode(from: &frameData)
-        XCTAssertEqual(decoded.messageType, .httpRequest)
+        XCTAssertEqual(frame?.messageType, .httpRequest)
 
-        var payloadBuffer = decoded.payload
-        let payloadBytes = payloadBuffer.readBytes(length: payloadBuffer.readableBytes)!
-        let payloadData = Data(payloadBytes)
-        let decodedRequest = try JSONDecoder().decode(HTTPRequestMessage.self, from: payloadData)
-        XCTAssertEqual(decodedRequest.body.count, 1024 * 1024)
+        let codec = BinaryMessageCodec()
+        let decodedRequest = try codec.decode(HTTPRequestMessage.self, from: frame!.payload)
+        XCTAssertEqual(decodedRequest.body.readableBytes, 1024 * 1024)
 
         try? await channel.close()
     }

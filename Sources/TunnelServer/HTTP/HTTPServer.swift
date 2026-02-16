@@ -107,7 +107,8 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
             let eventLoop = context.eventLoop
             let handler = self
             Task { @Sendable in
-                await handler.handleRequest(context: ctx, eventLoop: eventLoop, head: head, body: body)
+                await handler.handleRequest(
+                    context: ctx, eventLoop: eventLoop, head: head, body: body)
             }
             requestHead = nil
             requestBody = nil
@@ -115,9 +116,10 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     private func handleRequest(
-        context: ChannelHandlerContext, eventLoop: EventLoop, head: HTTPRequestHead, body: ByteBuffer
+        context: ChannelHandlerContext, eventLoop: EventLoop, head: HTTPRequestHead,
+        body: ByteBuffer
     ) async {
-        if head.uri == "/health" || head.uri == "/health/live" || head.uri == "/health/ready" {
+        if config.healthCheckPaths.contains(head.uri) {
             sendResponse(context: context, eventLoop: eventLoop, status: .ok, body: "OK")
             return
         }
@@ -125,7 +127,9 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
         let clientIP = context.remoteAddress?.ipAddress ?? "unknown"
 
         guard await rateLimiter.tryConsume(identifier: clientIP) else {
-            sendResponse(context: context, eventLoop: eventLoop, status: .tooManyRequests, body: "Rate limit exceeded")
+            sendResponse(
+                context: context, eventLoop: eventLoop, status: .tooManyRequests,
+                body: "Rate limit exceeded")
             return
         }
 
@@ -133,39 +137,55 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
             try RequestSizeValidator.validateBodySize(body.readableBytes)
             try RequestSizeValidator.validatePath(head.uri)
         } catch let error as RequestSizeValidator.ValidationError {
-            sendResponse(context: context, eventLoop: eventLoop, status: .payloadTooLarge, body: error.message)
+            sendResponse(
+                context: context, eventLoop: eventLoop, status: .payloadTooLarge,
+                body: error.message)
             return
         } catch {
-            sendResponse(context: context, eventLoop: eventLoop, status: .badRequest, body: "Invalid request")
+            sendResponse(
+                context: context, eventLoop: eventLoop, status: .badRequest, body: "Invalid request"
+            )
             return
         }
 
         let subdomain = extractSubdomain(from: head.headers["host"].first ?? "")
 
+        let safeURI = (try? InputSanitizer.sanitizeString(head.uri)) ?? "invalid-uri"
+        let safeSubdomain =
+            (try? InputSanitizer.sanitizeString(subdomain ?? "none")) ?? "invalid-subdomain"
+
         logger.debug(
             "HTTP request received",
             metadata: [
                 "method": "\(head.method)",
-                "uri": "\(head.uri)",
-                "subdomain": "\(subdomain ?? "none")",
+                "uri": "\(safeURI)",
+                "subdomain": "\(safeSubdomain)",
             ])
 
         guard let subdomain = subdomain else {
-            sendResponse(context: context, eventLoop: eventLoop, status: .notFound, body: "Invalid host")
+            sendResponse(
+                context: context, eventLoop: eventLoop, status: .notFound, body: "Invalid host")
             return
         }
 
         guard let tunnel = await connectionManager.getTunnel(forSubdomain: subdomain) else {
+            // Safe to log subdomain here since we sanitized it for the debug log above,
+            // but let's be safe and use safeSubdomain again if we wanted,
+            // but for the metadata value in info log:
+            let safeLogSubdomain =
+                (try? InputSanitizer.sanitizeString(subdomain)) ?? "invalid-subdomain"
             sendResponse(
-                context: context, eventLoop: eventLoop, status: .notFound, body: "Tunnel not found: \(subdomain)")
+                context: context, eventLoop: eventLoop, status: .notFound,
+                body: "Tunnel not found: \(safeLogSubdomain)")
             return
         }
 
+        let safeTunnelID = (try? InputSanitizer.sanitizeString(tunnel.id.uuidString)) ?? "unknown"
         logger.info(
             "Routing request to tunnel",
             metadata: [
-                "subdomain": "\(subdomain)",
-                "tunnelID": "\(tunnel.id.uuidString.prefix(8))",
+                "subdomain": "\(safeSubdomain)",  // safeSubdomain was calculated above
+                "tunnelID": "\(safeTunnelID.prefix(8))",
             ])
 
         await forwardToTunnel(
@@ -235,22 +255,29 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
         }
     }
 
-    private func handleTunnelError(context: ChannelHandlerContext, eventLoop: EventLoop, error: TunnelError) {
+    private func handleTunnelError(
+        context: ChannelHandlerContext, eventLoop: EventLoop, error: TunnelError
+    ) {
         switch error {
         case .client(.timeout, _):
-            sendResponse(context: context, eventLoop: eventLoop, status: .gatewayTimeout, body: "Gateway timeout")
+            sendResponse(
+                context: context, eventLoop: eventLoop, status: .gatewayTimeout,
+                body: "Gateway timeout")
 
         case .server(.tunnelNotFound, _):
             sendResponse(
-                context: context, eventLoop: eventLoop, status: .serviceUnavailable, body: "Tunnel disconnected")
+                context: context, eventLoop: eventLoop, status: .serviceUnavailable,
+                body: "Tunnel disconnected")
 
         case .client(let clientError, _):
             let status = HTTPResponseStatus(statusCode: 400)
             sendResponse(
-                context: context, eventLoop: eventLoop, status: status, body: "Client error: \(clientError)")
+                context: context, eventLoop: eventLoop, status: status,
+                body: "Client error: \(clientError)")
 
         default:
-            sendResponse(context: context, eventLoop: eventLoop, status: .badGateway, body: "Bad gateway")
+            sendResponse(
+                context: context, eventLoop: eventLoop, status: .badGateway, body: "Bad gateway")
         }
     }
 
@@ -262,7 +289,8 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     private func sendResponse(
-        context: ChannelHandlerContext, eventLoop: EventLoop, status: HTTPResponseStatus, body: String
+        context: ChannelHandlerContext, eventLoop: EventLoop, status: HTTPResponseStatus,
+        body: String
     ) {
         nonisolated(unsafe) let ctx = context
         let wrapOut = self.wrapOutboundOut

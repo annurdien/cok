@@ -1,9 +1,9 @@
-import XCTest
 import Logging
 import NIOCore
 import NIOEmbedded
 import NIOHTTP1
-import NIOWebSocket
+import XCTest
+
 @testable import TunnelCore
 @testable import TunnelServer
 
@@ -32,7 +32,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
         let validated = await authService.validateAPIKey(apiKey.key)
         XCTAssertNotNil(validated)
 
-        try SubdomainValidator.validate("myapp")
+        _ = try SubdomainValidator.validate("myapp")
 
         let tunnel = try await connectionManager.registerTunnel(
             subdomain: "myapp",
@@ -67,9 +67,9 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
             path: "/api/data",
             headers: [
                 HTTPHeader(name: "content-type", value: "application/json"),
-                HTTPHeader(name: "host", value: "test.example.com")
+                HTTPHeader(name: "host", value: "test.example.com"),
             ],
-            body: Data("{\"key\":\"value\"}".utf8),
+            body: ByteBuffer(string: "{\"key\":\"value\"}"),
             remoteAddress: "192.168.1.1"
         )
 
@@ -79,15 +79,12 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
 
         try await connectionManager.sendRequest(tunnelID: tunnel.id, request: request)
 
-        let frame = try channel.readOutbound(as: WebSocketFrame.self)
+        let frame = try channel.readOutbound(as: ProtocolFrame.self)
         XCTAssertNotNil(frame)
+        XCTAssertEqual(frame?.messageType, .httpRequest)
 
-        var frameData = frame!.unmaskedData
-        let protocolFrame = try ProtocolFrame.decode(from: &frameData)
-        XCTAssertEqual(protocolFrame.messageType, .httpRequest)
-
-        let codec = JSONMessageCodec()
-        let decodedRequest = try codec.decode(HTTPRequestMessage.self, from: protocolFrame.payload)
+        let codec = BinaryMessageCodec()
+        let decodedRequest = try codec.decode(HTTPRequestMessage.self, from: frame!.payload)
         XCTAssertEqual(decodedRequest.method, "POST")
         XCTAssertEqual(decodedRequest.path, "/api/data")
 
@@ -95,7 +92,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
             requestID: requestID,
             statusCode: 201,
             headers: [HTTPHeader(name: "content-type", value: "application/json")],
-            body: Data("{\"id\":1}".utf8)
+            body: ByteBuffer(string: "{\"id\":1}")
         )
 
         await requestTracker.complete(requestID: requestID, response: response)
@@ -180,7 +177,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
     }
 
     func testProtocolFrameRoundtrip() async throws {
-        let codec = JSONMessageCodec()
+        let codec = BinaryMessageCodec()
 
         let original = HTTPRequestMessage(
             requestID: UUID(),
@@ -188,9 +185,9 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
             path: "/resource/123",
             headers: [
                 HTTPHeader(name: "authorization", value: "Bearer token"),
-                HTTPHeader(name: "content-type", value: "application/json")
+                HTTPHeader(name: "content-type", value: "application/json"),
             ],
-            body: Data("{\"update\":true}".utf8),
+            body: ByteBuffer(string: "{\"update\":true}"),
             remoteAddress: "172.16.0.1"
         )
 
@@ -202,7 +199,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
             payload: payload
         )
 
-        let encoded = try frame.encode()
+        let encoded = frame.encode()
 
         var buffer = encoded
         let decoded = try ProtocolFrame.decode(from: &buffer)
@@ -298,8 +295,10 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
         await tracer.setTag(spanID: context.spanID, key: "http.url", value: "/api/users")
         await tracer.log(spanID: context.spanID, message: "Processing request")
 
-        let childContext = await tracer.startSpan(operationName: "db.query", parentSpanID: context.spanID)
-        await tracer.setTag(spanID: childContext.spanID, key: "db.statement", value: "SELECT * FROM users")
+        let childContext = await tracer.startSpan(
+            operationName: "db.query", parentSpanID: context.spanID)
+        await tracer.setTag(
+            spanID: childContext.spanID, key: "db.statement", value: "SELECT * FROM users")
         await tracer.endSpan(spanID: childContext.spanID)
 
         await tracer.endSpan(spanID: context.spanID)
@@ -378,7 +377,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
                 method: "GET",
                 path: "/",
                 headers: [],
-                body: Data(),
+                body: ByteBuffer(),
                 remoteAddress: "localhost"
             )
             try await connectionManager.sendRequest(tunnelID: nonExistentID, request: request)

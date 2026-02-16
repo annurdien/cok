@@ -1,5 +1,6 @@
 import Foundation
 import NIOCore
+import ZLib
 
 /*
 Wire format (Little Endian):
@@ -141,35 +142,18 @@ public struct ProtocolFrame: Sendable, CustomStringConvertible {
     }
 
     private static func calculateCRC32(buffer: ByteBuffer) -> UInt32 {
-        var crc: UInt32 = 0xFFFF_FFFF
-
-        buffer.withUnsafeReadableBytes { pointer in
-            for byte in pointer {
-                crc = crc32Table[Int((crc ^ UInt32(byte)) & 0xFF)] ^ (crc >> 8)
-            }
+        return buffer.withUnsafeReadableBytes { pointer in
+            guard let baseAddress = pointer.baseAddress else { return 0 }
+            let crc = crc32(
+                0, baseAddress.assumingMemoryBound(to: UInt8.self), UInt32(pointer.count))
+            return UInt32(crc)
         }
-
-        return crc ^ 0xFFFF_FFFF
     }
 
     public var description: String {
         "ProtocolFrame(v\(version), type: \(messageType), flags: \(flags), payload: \(payload.readableBytes) bytes)"
     }
 }
-
-private let crc32Table: [UInt32] = {
-    (0..<256).map { i -> UInt32 in
-        var crc = UInt32(i)
-        for _ in 0..<8 {
-            if crc & 1 != 0 {
-                crc = (crc >> 1) ^ 0xEDB8_8320
-            } else {
-                crc >>= 1
-            }
-        }
-        return crc
-    }
-}()
 
 public enum ProtocolError: Error, Sendable, CustomStringConvertible {
     case payloadTooLarge(size: Int, max: Int)

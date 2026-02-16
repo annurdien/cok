@@ -5,10 +5,9 @@ import TunnelCore
 public actor TunnelClient {
     private let config: ClientConfig
     private let logger: Logger
-    private let websocketClient: TunnelWebSocketClient
+    private let tcpClient: TunnelTCPClient
     private let circuitBreaker: CircuitBreaker
     private let requestHandler: LocalRequestHandler
-    private let localProxy: LocalHTTPProxy
     private var isRunning: Bool = false
 
     public init(config: ClientConfig, logger: Logger) throws {
@@ -17,28 +16,23 @@ public actor TunnelClient {
         self.config = config
         self.logger = logger
 
-        self.websocketClient = TunnelWebSocketClient(config: config, logger: logger)
+        self.tcpClient = TunnelTCPClient(config: config, logger: logger)
         self.circuitBreaker = CircuitBreaker(
             threshold: config.circuitBreakerThreshold,
             timeout: config.circuitBreakerTimeout
         )
 
         self.requestHandler = LocalRequestHandler(
-            websocketClient: websocketClient,
+            tcpClient: tcpClient,
             circuitBreaker: circuitBreaker,
             config: config,
             logger: logger
         )
 
-        self.localProxy = LocalHTTPProxy(
-            config: config,
-            requestHandler: requestHandler,
-            logger: logger
-        )
     }
 
     private func setupMessageHandling() async {
-        await websocketClient.onMessage { [weak self] frame in
+        await tcpClient.onMessage { [weak self] frame in
             guard let self = self else { return }
             await self.requestHandler.handleIncomingMessage(frame)
         }
@@ -54,20 +48,22 @@ public actor TunnelClient {
 
         isRunning = true
 
-        logger.info("Starting Cok tunnel client", metadata: [
-            "server": "\(config.serverURL)",
-            "subdomain": "\(config.subdomain)",
-            "localPort": "\(config.localPort)"
-        ])
+        logger.info(
+            "Starting Cok tunnel client",
+            metadata: [
+                "server": "\(config.serverHost):\(config.serverPort)",
+                "subdomain": "\(config.subdomain)",
+                "localPort": "\(config.localPort)",
+            ])
 
-        // Note: LocalHTTPProxy not started - we forward incoming tunnel requests directly to local server
+        try await tcpClient.connect()
 
-        try await websocketClient.connect()
-
-        logger.info("Cok tunnel client is running", metadata: [
-            "publicURL": "https://\(config.subdomain).tunnel.example.com",
-            "localURL": "http://\(config.localHost):\(config.localPort)"
-        ])
+        logger.info(
+            "Cok tunnel client is running",
+            metadata: [
+                "publicURL": "https://\(config.subdomain).tunnel.example.com",
+                "localURL": "http://\(config.localHost):\(config.localPort)",
+            ])
     }
 
     public func stop() async throws {
@@ -80,21 +76,19 @@ public actor TunnelClient {
 
         logger.info("Stopping Cok tunnel client")
 
-        await websocketClient.disconnect()
-        // Note: localProxy not used for reverse tunnel
-        // try await localProxy.stop()
+        await tcpClient.disconnect()
 
         logger.info("Cok tunnel client stopped")
     }
 
     public func getStatus() async -> ClientStatus {
-        let websocketState = await websocketClient.getState()
+        let tcpState = await tcpClient.getState()
         let circuitBreakerState = await circuitBreaker.getState()
         let pendingRequests = await requestHandler.pendingCount()
 
         return ClientStatus(
             isRunning: isRunning,
-            websocketState: websocketState,
+            tcpState: tcpState,
             circuitBreakerState: circuitBreakerState,
             pendingRequests: pendingRequests,
             config: config
@@ -104,7 +98,7 @@ public actor TunnelClient {
 
 public struct ClientStatus: Sendable {
     public let isRunning: Bool
-    public let websocketState: TunnelWebSocketClient.State
+    public let tcpState: TunnelTCPClient.State
     public let circuitBreakerState: CircuitBreaker.State
     public let pendingRequests: Int
     public let config: ClientConfig
@@ -114,12 +108,12 @@ public struct ClientStatus: Sendable {
         Cok Tunnel Client Status
         ========================
         Running: \(isRunning)
-        WebSocket: \(websocketState)
+        TCP Connection: \(tcpState)
         Circuit Breaker: \(circuitBreakerState)
         Pending Requests: \(pendingRequests)
 
         Configuration:
-        - Server: \(config.serverURL)
+        - Server: \(config.serverHost):\(config.serverPort)
         - Subdomain: \(config.subdomain)
         - Local: \(config.localHost):\(config.localPort)
         """
