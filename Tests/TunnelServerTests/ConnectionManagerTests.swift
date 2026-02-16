@@ -1,8 +1,8 @@
-import XCTest
 import Logging
 import NIOCore
 import NIOEmbedded
-import NIOWebSocket
+import XCTest
+
 @testable import TunnelCore
 @testable import TunnelServer
 
@@ -83,7 +83,8 @@ final class ConnectionManagerTests: XCTestCase {
         _ = try await smallManager.registerTunnel(subdomain: "test2", apiKey: "key2", channel: ch2)
 
         do {
-            _ = try await smallManager.registerTunnel(subdomain: "test3", apiKey: "key3", channel: ch3)
+            _ = try await smallManager.registerTunnel(
+                subdomain: "test3", apiKey: "key3", channel: ch3)
             XCTFail("Should have thrown error")
         } catch {
             XCTAssertTrue(error is ServerError)
@@ -130,8 +131,8 @@ final class ConnectionManagerTests: XCTestCase {
 
         try await manager.sendRequest(tunnelID: tunnel.id, request: request)
 
-        let frame = try channel.readOutbound(as: WebSocketFrame.self)
+        let frame = try channel.readOutbound(as: ProtocolFrame.self)
         XCTAssertNotNil(frame)
-        XCTAssertEqual(frame?.opcode, .binary)
+        XCTAssertEqual(frame?.messageType, .httpRequest)
     }
 }

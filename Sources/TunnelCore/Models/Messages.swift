@@ -1,7 +1,9 @@
 import Foundation
 import NIOCore
 
-public struct ConnectRequest: Codable, Sendable, CustomStringConvertible {
+// MARK: - Connect Request
+
+public struct ConnectRequest: BinarySerializable, Sendable, CustomStringConvertible {
     public let apiKey: String
     public let requestedSubdomain: String?
     public let clientVersion: String
@@ -19,6 +21,33 @@ public struct ConnectRequest: Codable, Sendable, CustomStringConvertible {
         self.capabilities = capabilities
     }
 
+    public func serialize(into buffer: inout ByteBuffer) {
+        buffer.writeStringWithLength(apiKey)
+        buffer.writeOptionalString(requestedSubdomain)
+        buffer.writeStringWithLength(clientVersion)
+        buffer.writeArray(capabilities) { buf, cap in
+            buf.writeStringWithLength(cap)
+        }
+    }
+
+    public init(from buffer: inout ByteBuffer) throws {
+        guard let apiKey = buffer.readStringWithLength() else {
+            throw BinaryError.decodingError("apiKey")
+        }
+        self.apiKey = apiKey
+        self.requestedSubdomain = buffer.readOptionalString()
+        guard let clientVersion = buffer.readStringWithLength() else {
+            throw BinaryError.decodingError("clientVersion")
+        }
+        self.clientVersion = clientVersion
+        guard
+            let capabilities = buffer.readArray(readElement: { buf in buf.readStringWithLength() })
+        else {
+            throw BinaryError.decodingError("capabilities")
+        }
+        self.capabilities = capabilities
+    }
+
     public var description: String {
         "ConnectRequest(subdomain: \(requestedSubdomain ?? "auto"), version: \(clientVersion))"
     }
@@ -26,21 +55,11 @@ public struct ConnectRequest: Codable, Sendable, CustomStringConvertible {
 
 // MARK: - Connect Response
 
-/// Server responds with tunnel assignment
-public struct ConnectResponse: Codable, Sendable, CustomStringConvertible {
-    /// Unique tunnel identifier
+public struct ConnectResponse: BinarySerializable, Sendable, CustomStringConvertible {
     public let tunnelID: UUID
-
-    /// Assigned subdomain
     public let subdomain: String
-
-    /// Session token (JWT) for subsequent auth
     public let sessionToken: String
-
-    /// Public URL for accessing the tunnel
     public let publicURL: String
-
-    /// Session expiration time
     public let expiresAt: Date
 
     public init(
@@ -57,6 +76,35 @@ public struct ConnectResponse: Codable, Sendable, CustomStringConvertible {
         self.expiresAt = expiresAt
     }
 
+    public func serialize(into buffer: inout ByteBuffer) {
+        buffer.writeUUID(tunnelID)
+        buffer.writeStringWithLength(subdomain)
+        buffer.writeStringWithLength(sessionToken)
+        buffer.writeStringWithLength(publicURL)
+        buffer.writeDate(expiresAt)
+    }
+
+    public init(from buffer: inout ByteBuffer) throws {
+        guard let tunnelID = buffer.readUUID() else { throw BinaryError.decodingError("tunnelID") }
+        self.tunnelID = tunnelID
+        guard let subdomain = buffer.readStringWithLength() else {
+            throw BinaryError.decodingError("subdomain")
+        }
+        self.subdomain = subdomain
+        guard let sessionToken = buffer.readStringWithLength() else {
+            throw BinaryError.decodingError("sessionToken")
+        }
+        self.sessionToken = sessionToken
+        guard let publicURL = buffer.readStringWithLength() else {
+            throw BinaryError.decodingError("publicURL")
+        }
+        self.publicURL = publicURL
+        guard let expiresAt = buffer.readDate() else {
+            throw BinaryError.decodingError("expiresAt")
+        }
+        self.expiresAt = expiresAt
+    }
+
     public var description: String {
         "ConnectResponse(tunnel: \(tunnelID), subdomain: \(subdomain), url: \(publicURL))"
     }
@@ -64,13 +112,28 @@ public struct ConnectResponse: Codable, Sendable, CustomStringConvertible {
 
 // MARK: - HTTP Header
 
-/// HTTP header key-value pair (Codable compatible)
-public struct HTTPHeader: Codable, Sendable, CustomStringConvertible {
+public struct HTTPHeader: BinarySerializable, Sendable, CustomStringConvertible {
     public let name: String
     public let value: String
 
     public init(name: String, value: String) {
         self.name = name
+        self.value = value
+    }
+
+    public func serialize(into buffer: inout ByteBuffer) {
+        buffer.writeStringWithLength(name)
+        buffer.writeStringWithLength(value)
+    }
+
+    public init(from buffer: inout ByteBuffer) throws {
+        guard let name = buffer.readStringWithLength() else {
+            throw BinaryError.decodingError("header name")
+        }
+        self.name = name
+        guard let value = buffer.readStringWithLength() else {
+            throw BinaryError.decodingError("header value")
+        }
         self.value = value
     }
 
@@ -81,24 +144,12 @@ public struct HTTPHeader: Codable, Sendable, CustomStringConvertible {
 
 // MARK: - HTTP Request Message
 
-/// Server forwards HTTP request to client
-public struct HTTPRequestMessage: Codable, Sendable, CustomStringConvertible {
-    /// Unique request identifier for correlation
+public struct HTTPRequestMessage: BinarySerializable, Sendable, CustomStringConvertible {
     public let requestID: UUID
-
-    /// HTTP method (GET, POST, etc.)
     public let method: String
-
-    /// Request path
     public let path: String
-
-    /// HTTP headers
     public let headers: [HTTPHeader]
-
-    /// Request body (base64 encoded for JSON)
     public let body: Data
-
-    /// Remote address of original requester
     public let remoteAddress: String
 
     public init(
@@ -117,6 +168,42 @@ public struct HTTPRequestMessage: Codable, Sendable, CustomStringConvertible {
         self.remoteAddress = remoteAddress
     }
 
+    public func serialize(into buffer: inout ByteBuffer) {
+        buffer.writeUUID(requestID)
+        buffer.writeStringWithLength(method)
+        buffer.writeStringWithLength(path)
+        buffer.writeArray(headers) { buf, header in header.serialize(into: &buf) }
+        buffer.writeDataWithLength(body)
+        buffer.writeStringWithLength(remoteAddress)
+    }
+
+    public init(from buffer: inout ByteBuffer) throws {
+        guard let requestID = buffer.readUUID() else {
+            throw BinaryError.decodingError("requestID")
+        }
+        self.requestID = requestID
+        guard let method = buffer.readStringWithLength() else {
+            throw BinaryError.decodingError("method")
+        }
+        self.method = method
+        guard let path = buffer.readStringWithLength() else {
+            throw BinaryError.decodingError("path")
+        }
+        self.path = path
+        guard let headers = buffer.readArray(readElement: { try? HTTPHeader(from: &$0) }) else {
+            throw BinaryError.decodingError("headers")
+        }
+        self.headers = headers
+        guard let body = buffer.readDataWithLength() else {
+            throw BinaryError.decodingError("body")
+        }
+        self.body = body
+        guard let remoteAddress = buffer.readStringWithLength() else {
+            throw BinaryError.decodingError("remoteAddress")
+        }
+        self.remoteAddress = remoteAddress
+    }
+
     public var description: String {
         "HTTPRequest(\(requestID), \(method) \(path), \(body.count) bytes)"
     }
@@ -124,18 +211,10 @@ public struct HTTPRequestMessage: Codable, Sendable, CustomStringConvertible {
 
 // MARK: - HTTP Response Message
 
-/// Client sends HTTP response back to server
-public struct HTTPResponseMessage: Codable, Sendable, CustomStringConvertible {
-    /// Request ID this response corresponds to
+public struct HTTPResponseMessage: BinarySerializable, Sendable, CustomStringConvertible {
     public let requestID: UUID
-
-    /// HTTP status code
     public let statusCode: UInt16
-
-    /// Response headers
     public let headers: [HTTPHeader]
-
-    /// Response body (base64 encoded for JSON)
     public let body: Data
 
     public init(
@@ -150,6 +229,32 @@ public struct HTTPResponseMessage: Codable, Sendable, CustomStringConvertible {
         self.body = body
     }
 
+    public func serialize(into buffer: inout ByteBuffer) {
+        buffer.writeUUID(requestID)
+        buffer.writeInteger(statusCode)
+        buffer.writeArray(headers) { buf, header in header.serialize(into: &buf) }
+        buffer.writeDataWithLength(body)
+    }
+
+    public init(from buffer: inout ByteBuffer) throws {
+        guard let requestID = buffer.readUUID() else {
+            throw BinaryError.decodingError("requestID")
+        }
+        self.requestID = requestID
+        guard let statusCode = buffer.readInteger(as: UInt16.self) else {
+            throw BinaryError.decodingError("statusCode")
+        }
+        self.statusCode = statusCode
+        guard let headers = buffer.readArray(readElement: { try? HTTPHeader(from: &$0) }) else {
+            throw BinaryError.decodingError("headers")
+        }
+        self.headers = headers
+        guard let body = buffer.readDataWithLength() else {
+            throw BinaryError.decodingError("body")
+        }
+        self.body = body
+    }
+
     public var description: String {
         "HTTPResponse(\(requestID), status: \(statusCode), \(body.count) bytes)"
     }
@@ -157,42 +262,62 @@ public struct HTTPResponseMessage: Codable, Sendable, CustomStringConvertible {
 
 // MARK: - Ping/Pong Messages
 
-/// Keep-alive ping message
-public struct PingMessage: Codable, Sendable {
-    /// Timestamp when ping was sent
+public struct PingMessage: BinarySerializable, Sendable {
     public let timestamp: Date
 
     public init(timestamp: Date = Date()) {
         self.timestamp = timestamp
     }
+
+    public func serialize(into buffer: inout ByteBuffer) {
+        buffer.writeDate(timestamp)
+    }
+
+    public init(from buffer: inout ByteBuffer) throws {
+        guard let timestamp = buffer.readDate() else {
+            throw BinaryError.decodingError("timestamp")
+        }
+        self.timestamp = timestamp
+    }
 }
 
-/// Keep-alive pong response
-public struct PongMessage: Codable, Sendable {
-    /// Original ping timestamp
+public struct PongMessage: BinarySerializable, Sendable {
     public let pingTimestamp: Date
-
-    /// Pong response timestamp
     public let pongTimestamp: Date
 
     public init(pingTimestamp: Date, pongTimestamp: Date = Date()) {
         self.pingTimestamp = pingTimestamp
         self.pongTimestamp = pongTimestamp
     }
+
+    public func serialize(into buffer: inout ByteBuffer) {
+        buffer.writeDate(pingTimestamp)
+        buffer.writeDate(pongTimestamp)
+    }
+
+    public init(from buffer: inout ByteBuffer) throws {
+        guard let pingTimestamp = buffer.readDate() else {
+            throw BinaryError.decodingError("pingTimestamp")
+        }
+        self.pingTimestamp = pingTimestamp
+        guard let pongTimestamp = buffer.readDate() else {
+            throw BinaryError.decodingError("pongTimestamp")
+        }
+        self.pongTimestamp = pongTimestamp
+    }
 }
 
 // MARK: - Disconnect Message
 
-/// Graceful disconnection message
-public struct DisconnectMessage: Codable, Sendable, CustomStringConvertible {
-    /// Reason for disconnection
-    public enum Reason: String, Codable, Sendable {
+public struct DisconnectMessage: BinarySerializable, Sendable, CustomStringConvertible {
+    public enum Reason: String, Sendable {
         case clientShutdown = "client_shutdown"
         case serverShutdown = "server_shutdown"
         case timeout = "timeout"
         case protocolError = "protocol_error"
         case authenticationFailed = "authentication_failed"
         case rateLimitExceeded = "rate_limit_exceeded"
+        case unknown = "unknown"
     }
 
     public let reason: Reason
@@ -203,6 +328,19 @@ public struct DisconnectMessage: Codable, Sendable, CustomStringConvertible {
         self.message = message
     }
 
+    public func serialize(into buffer: inout ByteBuffer) {
+        buffer.writeStringWithLength(reason.rawValue)
+        buffer.writeOptionalString(message)
+    }
+
+    public init(from buffer: inout ByteBuffer) throws {
+        guard let reasonString = buffer.readStringWithLength() else {
+            throw BinaryError.decodingError("reason")
+        }
+        self.reason = Reason(rawValue: reasonString) ?? .unknown
+        self.message = buffer.readOptionalString()
+    }
+
     public var description: String {
         let msg = message.map { " - \($0)" } ?? ""
         return "Disconnect(\(reason.rawValue)\(msg))"
@@ -211,15 +349,9 @@ public struct DisconnectMessage: Codable, Sendable, CustomStringConvertible {
 
 // MARK: - Error Message
 
-/// Error message sent by either party
-public struct ErrorMessage: Codable, Sendable, CustomStringConvertible {
-    /// Error code (matches HTTP-style codes)
+public struct ErrorMessage: BinarySerializable, Sendable, CustomStringConvertible {
     public let code: UInt16
-
-    /// Human-readable error message
     public let message: String
-
-    /// Additional context/metadata
     public let metadata: [String: String]?
 
     public init(code: UInt16, message: String, metadata: [String: String]? = nil) {
@@ -228,7 +360,56 @@ public struct ErrorMessage: Codable, Sendable, CustomStringConvertible {
         self.metadata = metadata
     }
 
+    public func serialize(into buffer: inout ByteBuffer) {
+        buffer.writeInteger(code)
+        buffer.writeStringWithLength(message)
+        // Metadata as array of key-value pairs?
+        // Or specific serialization for map?
+        if let metadata = metadata {
+            buffer.writeInteger(UInt32(metadata.count))
+            for (key, value) in metadata {
+                buffer.writeStringWithLength(key)
+                buffer.writeStringWithLength(value)
+            }
+        } else {
+            buffer.writeInteger(UInt32(0))
+        }
+    }
+
+    public init(from buffer: inout ByteBuffer) throws {
+        guard let code = buffer.readInteger(as: UInt16.self) else {
+            throw BinaryError.decodingError("code")
+        }
+        self.code = code
+        guard let message = buffer.readStringWithLength() else {
+            throw BinaryError.decodingError("message")
+        }
+        self.message = message
+
+        guard let count = buffer.readInteger(as: UInt32.self) else {
+            throw BinaryError.decodingError("metadata count")
+        }
+        if count > 0 {
+            var metadata: [String: String] = [:]
+            for _ in 0..<count {
+                guard let key = buffer.readStringWithLength(),
+                    let value = buffer.readStringWithLength()
+                else {
+                    throw BinaryError.decodingError("metadata item")
+                }
+                metadata[key] = value
+            }
+            self.metadata = metadata
+        } else {
+            self.metadata = nil
+        }
+    }
+
     public var description: String {
         "Error(\(code): \(message))"
     }
+}
+
+public enum BinaryError: Error {
+    case decodingError(String)
 }

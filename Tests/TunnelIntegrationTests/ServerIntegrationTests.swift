@@ -1,9 +1,9 @@
-import XCTest
 import Logging
 import NIOCore
 import NIOEmbedded
 import NIOHTTP1
-import NIOWebSocket
+import XCTest
+
 @testable import TunnelCore
 @testable import TunnelServer
 
@@ -45,12 +45,20 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
 
         try await Task.sleep(for: .milliseconds(100))
 
-        let frame = try channel.readOutbound(as: WebSocketFrame.self)
-        XCTAssertNotNil(frame)
-        XCTAssertEqual(frame?.opcode, .binary)
+        try await connectionManager.sendRequest(tunnelID: tunnel.id, request: httpRequest)
 
-        var frameData = frame!.unmaskedData
-        let decoded = try ProtocolFrame.decode(from: &frameData)
+        try await Task.sleep(for: .milliseconds(100))
+
+        let frame = try channel.readOutbound(as: ProtocolFrame.self)
+        XCTAssertNotNil(frame)
+        XCTAssertEqual(frame?.messageType, .httpRequest)
+
+        let decoded = try ProtocolFrame(
+            version: frame!.version,
+            messageType: frame!.messageType,
+            flags: frame!.flags,
+            payload: frame!.payload
+        )
         XCTAssertEqual(decoded.messageType, .httpRequest)
 
         let httpResponse = HTTPResponseMessage(
@@ -121,9 +129,12 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
         let count = await requestTracker.pendingCount()
         XCTAssertEqual(count, 3)
 
-        let response1 = HTTPResponseMessage(requestID: id1, statusCode: 200, headers: [], body: Data("1".utf8))
-        let response2 = HTTPResponseMessage(requestID: id2, statusCode: 200, headers: [], body: Data("2".utf8))
-        let response3 = HTTPResponseMessage(requestID: id3, statusCode: 200, headers: [], body: Data("3".utf8))
+        let response1 = HTTPResponseMessage(
+            requestID: id1, statusCode: 200, headers: [], body: Data("1".utf8))
+        let response2 = HTTPResponseMessage(
+            requestID: id2, statusCode: 200, headers: [], body: Data("2".utf8))
+        let response3 = HTTPResponseMessage(
+            requestID: id3, statusCode: 200, headers: [], body: Data("3".utf8))
 
         await requestTracker.complete(requestID: id1, response: response1)
         await requestTracker.complete(requestID: id2, response: response2)
@@ -190,7 +201,7 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
             path: "/api/data",
             headers: [
                 HTTPHeader(name: "content-type", value: "application/json"),
-                HTTPHeader(name: "authorization", value: "Bearer token123")
+                HTTPHeader(name: "authorization", value: "Bearer token123"),
             ],
             body: Data("{\"test\":true}".utf8),
             remoteAddress: "192.168.1.100"
@@ -198,20 +209,17 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
 
         try await connectionManager.sendRequest(tunnelID: tunnel.id, request: request)
 
-        let frame = try channel.readOutbound(as: WebSocketFrame.self)
+        try await connectionManager.sendRequest(tunnelID: tunnel.id, request: request)
+
+        let frame = try channel.readOutbound(as: ProtocolFrame.self)
         XCTAssertNotNil(frame)
+        XCTAssertEqual(frame?.version, .current)
+        XCTAssertEqual(frame?.messageType, .httpRequest)
+        XCTAssertGreaterThan(frame?.payload.readableBytes ?? 0, 0)
 
-        var frameData = frame!.unmaskedData
-        let decoded = try ProtocolFrame.decode(from: &frameData)
-
-        XCTAssertEqual(decoded.version, .current)
-        XCTAssertEqual(decoded.messageType, .httpRequest)
-        XCTAssertGreaterThan(decoded.payload.readableBytes, 0)
-
-        var payloadBuffer = decoded.payload
-        let payloadBytes = payloadBuffer.readBytes(length: payloadBuffer.readableBytes)!
-        let payloadData = Data(payloadBytes)
-        let decodedRequest = try JSONDecoder().decode(HTTPRequestMessage.self, from: payloadData)
+        // Decode payload
+        let codec = BinaryMessageCodec()
+        let decodedRequest = try codec.decode(HTTPRequestMessage.self, from: frame!.payload)
         XCTAssertEqual(decodedRequest.requestID, requestID)
         XCTAssertEqual(decodedRequest.method, "POST")
         XCTAssertEqual(decodedRequest.path, "/api/data")

@@ -1,6 +1,7 @@
 import Foundation
 
 public struct ServerConfig: Sendable {
+    public let host: String
     public let httpPort: Int
     public let wsPort: Int
     public let allowedHosts: Set<String>
@@ -9,6 +10,7 @@ public struct ServerConfig: Sendable {
     public let baseDomain: String
 
     public init(
+        host: String = "0.0.0.0",
         httpPort: Int = 8080,
         wsPort: Int = 5000,
         allowedHosts: Set<String> = ["localhost"],
@@ -16,6 +18,7 @@ public struct ServerConfig: Sendable {
         apiKeySecret: String,
         baseDomain: String = "localhost"
     ) {
+        self.host = host
         self.httpPort = httpPort
         self.wsPort = wsPort
         self.allowedHosts = allowedHosts

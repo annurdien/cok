@@ -1,7 +1,6 @@
 import Foundation
 import Logging
 import NIOCore
-import NIOWebSocket
 import TunnelCore
 
 public struct TunnelConnection: Sendable {
@@ -30,14 +29,15 @@ public actor ConnectionManager {
     private let logger: Logger
     private let codec: MessageCodec
 
-    public init(maxConnections: Int, logger: Logger, codec: MessageCodec = JSONMessageCodec()) {
+    public init(maxConnections: Int, logger: Logger, codec: MessageCodec = BinaryMessageCodec()) {
         self.maxConnections = maxConnections
         self.logger = logger
         self.codec = codec
     }
 
     public func registerTunnel(subdomain: String, apiKey: String, channel: Channel) throws
-        -> TunnelConnection {
+        -> TunnelConnection
+    {
         guard !subdomain.isEmpty else {
             throw ServerError.internalError("Subdomain cannot be empty")
         }
@@ -83,15 +83,9 @@ public actor ConnectionManager {
             payload: payload
         )
 
-        let frameData = try frame.encode()
-
-        let wsFrame = WebSocketFrame(
-            fin: true,
-            opcode: .binary,
-            data: frameData
-        )
-
-        try await tunnel.channel.writeAndFlush(wsFrame).get()
+        // If ProtocolFrameEncoder is in the pipeline, we can write the frame directly.
+        // Assuming TCPServer sets up ProtocolFrameEncoder.
+        try await tunnel.channel.writeAndFlush(frame).get()
 
         logger.debug(
             "Sent request to tunnel",

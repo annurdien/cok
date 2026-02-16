@@ -35,10 +35,14 @@ struct CokCLI: AsyncParsableCommand {
 
         let resolvedSubdomain = subdomain ?? generateSubdomain()
         let resolvedApiKey = apiKey ?? ProcessInfo.processInfo.environment["COK_API_KEY"] ?? ""
-        let resolvedServer = server ?? ProcessInfo.processInfo.environment["COK_SERVER_URL"] ?? "ws://localhost:8081"
+        let resolvedServer =
+            server ?? ProcessInfo.processInfo.environment["COK_SERVER_URL"] ?? "ws://localhost:8081"
+
+        let (serverHost, serverPort) = parseServerAddress(resolvedServer)
 
         let config = ClientConfig(
-            serverURL: resolvedServer,
+            serverHost: serverHost,
+            serverPort: serverPort,
             subdomain: resolvedSubdomain,
             apiKey: resolvedApiKey,
             localHost: host,
@@ -52,7 +56,6 @@ struct CokCLI: AsyncParsableCommand {
         let client = try TunnelClient(config: config, logger: logger)
         try await client.start()
 
-        let serverHost = extractHost(from: config.serverURL)
         let publicURL = "https://\(resolvedSubdomain).\(serverHost)"
 
         print("  ✓ Tunnel established!")
@@ -79,10 +82,20 @@ struct CokCLI: AsyncParsableCommand {
         return "\(adj)-\(noun)-\(num)"
     }
 
-    private func extractHost(from urlString: String) -> String {
-        guard let url = URL(string: urlString), let host = url.host else {
-            return "localhost"
+    private func parseServerAddress(_ address: String) -> (String, Int) {
+        // Handle URL format
+        if let url = URL(string: address), let host = url.host {
+            let port = url.port ?? 5000
+            return (host, port)
         }
-        return host
+
+        // Handle host:port format
+        let parts = address.split(separator: ":")
+        if parts.count == 2, let port = Int(parts[1]) {
+            return (String(parts[0]), port)
+        }
+
+        // Default to address as host and default port
+        return (address, 5000)
     }
 }

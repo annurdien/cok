@@ -1,5 +1,5 @@
 {
-  "originHash" : "aeea29defe8baa7e68b53e65ba70ac9474b9123121248e4e29e63a8745278a8a",
+  "originHash" : "9258659e9d6c5367b556a95baea5ed69b6f027af40d6da862bb56f97ca283bcc",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -197,15 +197,6 @@
       "state" : {
         "revision" : "7c6ad0fc39d0763e0b699210e4124afd5041c5df",
         "version" : "1.6.4"
-      }
-    },
-    {
-      "identity" : "websocket-kit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/vapor/websocket-kit.git",
-      "state" : {
-        "revision" : "8666c92dbbb3c8eefc8008c9c8dcf50bfd302167",
-        "version" : "2.16.1"
       }
     }
   ],

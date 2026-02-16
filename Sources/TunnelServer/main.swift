@@ -25,10 +25,12 @@ let authService = AuthService(secret: config.apiKeySecret)
 if let testSubdomain = ProcessInfo.processInfo.environment["TEST_SUBDOMAIN"] {
     do {
         let testKey = try await authService.createAPIKey(for: testSubdomain)
-        logger.info("Test API key created", metadata: [
-            "subdomain": "\(testSubdomain)",
-            "key": "\(testKey.key)"
-        ])
+        logger.info(
+            "Test API key created",
+            metadata: [
+                "subdomain": "\(testSubdomain)",
+                "key": "\(testKey.key)",
+            ])
 
         // Write key to file for client to use
         let keyFilePath = FileManager.default.currentDirectoryPath + "/.api_key.tmp"
@@ -51,13 +53,13 @@ let httpServer = HTTPServer(
     requestTracker: requestTracker,
     rateLimiter: httpRateLimiter
 )
-let wsServer = WebSocketServer(
+
+let tcpServer = TCPServer(
     config: config,
     logger: logger,
     connectionManager: connectionManager,
     authService: authService,
-    requestTracker: requestTracker,
-    rateLimiter: wsRateLimiter
+    requestTracker: requestTracker
 )
 
 let shutdown = GracefulShutdown(logger: logger, timeout: 30)
@@ -68,8 +70,8 @@ await shutdown.register {
 }
 
 await shutdown.register {
-    logger.info("Shutting down WebSocket server...")
-    try await wsServer.shutdown()
+    logger.info("Shutting down TCP server...")
+    try await tcpServer.shutdown()
 }
 
 await shutdown.register {
@@ -93,7 +95,7 @@ try await withThrowingTaskGroup(of: Void.self) { group in
     }
 
     group.addTask {
-        try await wsServer.start()
+        try await tcpServer.start()
     }
 
     try await group.next()

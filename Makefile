@@ -35,6 +35,11 @@ build: ## Build both server and client
 	@swift build -c release --product cok
 	@echo "$(GREEN)✓ Build complete$(NC)"
 
+unit-test: ## Run unit tests
+	@echo "$(BLUE)Running unit tests...$(NC)"
+	@swift test
+	@echo "$(GREEN)✓ Tests passed$(NC)"
+
 make-server: build ## Run test server with predefined auth key
 	@rm -f .api_key.tmp
 	@echo "$(BLUE)═══════════════════════════════════════$(NC)"
