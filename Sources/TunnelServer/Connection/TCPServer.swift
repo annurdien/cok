@@ -117,9 +117,12 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
     private func handleConnectRequest(channel: Channel, payload: ByteBuffer) async throws {
         let request = try codec.decode(ConnectRequest.self, from: payload)
 
+        let safeSubdomain =
+            (try? InputSanitizer.sanitizeString(request.requestedSubdomain ?? "auto"))
+            ?? "invalid-subdomain"
         logger.info(
             "Received connect request",
-            metadata: ["subdomain": "\(request.requestedSubdomain ?? "auto")"])
+            metadata: ["subdomain": "\(safeSubdomain)"])
 
         do {
             guard let apiKey = await authService.validateAPIKey(request.apiKey) else {
@@ -155,7 +158,8 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
             tunnelID.set(tunnel.id)
 
         } catch {
-            logger.error("Connection failed", metadata: ["error": "\(error)"])
+            let safeError = (try? InputSanitizer.sanitizeString("\(error)")) ?? "unknown-error"
+            logger.error("Connection failed", metadata: ["error": "\(safeError)"])
 
             let code: UInt16
             let message: String

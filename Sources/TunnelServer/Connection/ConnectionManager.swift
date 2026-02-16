@@ -57,11 +57,14 @@ public actor ConnectionManager {
         tunnels[tunnel.id.uuidString] = tunnel
         subdomainToTunnel[subdomain] = tunnel.id
 
+        let safeSubdomain = (try? InputSanitizer.sanitizeString(subdomain)) ?? "invalid-subdomain"
+        let safeTunnelID = (try? InputSanitizer.sanitizeString(tunnel.id.uuidString)) ?? "unknown"
+
         logger.info(
             "Tunnel registered",
             metadata: [
-                "tunnelID": "\(tunnel.id.uuidString.prefix(8))",
-                "subdomain": "\(subdomain)",
+                "tunnelID": "\(safeTunnelID.prefix(8))",
+                "subdomain": "\(safeSubdomain)",
             ])
 
         return tunnel
@@ -89,11 +92,15 @@ public actor ConnectionManager {
         // Assuming TCPServer sets up ProtocolFrameEncoder.
         try await tunnel.channel.writeAndFlush(frame).get()
 
+        let safeTunnelID = (try? InputSanitizer.sanitizeString(tunnelID.uuidString)) ?? "unknown"
+        let safeRequestID =
+            (try? InputSanitizer.sanitizeString(request.requestID.uuidString)) ?? "unknown"
+
         logger.debug(
             "Sent request to tunnel",
             metadata: [
-                "tunnelID": "\(tunnelID.uuidString.prefix(8))",
-                "requestID": "\(request.requestID.uuidString.prefix(8))",
+                "tunnelID": "\(safeTunnelID.prefix(8))",
+                "requestID": "\(safeRequestID.prefix(8))",
             ])
     }
 
@@ -104,11 +111,15 @@ public actor ConnectionManager {
 
         subdomainToTunnel.removeValue(forKey: tunnel.subdomain)
 
+        let safeTunnelID = (try? InputSanitizer.sanitizeString(id.uuidString)) ?? "unknown"
+        let safeSubdomain =
+            (try? InputSanitizer.sanitizeString(tunnel.subdomain)) ?? "invalid-subdomain"
+
         logger.info(
             "Tunnel unregistered",
             metadata: [
-                "tunnelID": "\(id.uuidString.prefix(8))",
-                "subdomain": "\(tunnel.subdomain)",
+                "tunnelID": "\(safeTunnelID.prefix(8))",
+                "subdomain": "\(safeSubdomain)",
             ])
     }
 

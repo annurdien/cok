@@ -149,7 +149,7 @@ public struct HTTPRequestMessage: BinarySerializable, Sendable, CustomStringConv
     public let method: String
     public let path: String
     public let headers: [HTTPHeader]
-    public let body: Data
+    public let body: ByteBuffer
     public let remoteAddress: String
 
     public init(
@@ -157,7 +157,7 @@ public struct HTTPRequestMessage: BinarySerializable, Sendable, CustomStringConv
         method: String,
         path: String,
         headers: [HTTPHeader],
-        body: Data,
+        body: ByteBuffer,
         remoteAddress: String
     ) {
         self.requestID = requestID
@@ -173,7 +173,7 @@ public struct HTTPRequestMessage: BinarySerializable, Sendable, CustomStringConv
         buffer.writeStringWithLength(method)
         buffer.writeStringWithLength(path)
         buffer.writeArray(headers) { buf, header in header.serialize(into: &buf) }
-        buffer.writeDataWithLength(body)
+        buffer.writeBufferWithLength(body)
         buffer.writeStringWithLength(remoteAddress)
     }
 
@@ -194,7 +194,7 @@ public struct HTTPRequestMessage: BinarySerializable, Sendable, CustomStringConv
             throw BinaryError.decodingError("headers")
         }
         self.headers = headers
-        guard let body = buffer.readDataWithLength() else {
+        guard let body = buffer.readBufferWithLength() else {
             throw BinaryError.decodingError("body")
         }
         self.body = body
@@ -205,7 +205,7 @@ public struct HTTPRequestMessage: BinarySerializable, Sendable, CustomStringConv
     }
 
     public var description: String {
-        "HTTPRequest(\(requestID), \(method) \(path), \(body.count) bytes)"
+        "HTTPRequest(\(requestID), \(method) \(path), \(body.readableBytes) bytes)"
     }
 }
 
@@ -215,13 +215,13 @@ public struct HTTPResponseMessage: BinarySerializable, Sendable, CustomStringCon
     public let requestID: UUID
     public let statusCode: UInt16
     public let headers: [HTTPHeader]
-    public let body: Data
+    public let body: ByteBuffer
 
     public init(
         requestID: UUID,
         statusCode: UInt16,
         headers: [HTTPHeader],
-        body: Data
+        body: ByteBuffer
     ) {
         self.requestID = requestID
         self.statusCode = statusCode
@@ -233,7 +233,7 @@ public struct HTTPResponseMessage: BinarySerializable, Sendable, CustomStringCon
         buffer.writeUUID(requestID)
         buffer.writeInteger(statusCode)
         buffer.writeArray(headers) { buf, header in header.serialize(into: &buf) }
-        buffer.writeDataWithLength(body)
+        buffer.writeBufferWithLength(body)
     }
 
     public init(from buffer: inout ByteBuffer) throws {
@@ -249,14 +249,14 @@ public struct HTTPResponseMessage: BinarySerializable, Sendable, CustomStringCon
             throw BinaryError.decodingError("headers")
         }
         self.headers = headers
-        guard let body = buffer.readDataWithLength() else {
+        guard let body = buffer.readBufferWithLength() else {
             throw BinaryError.decodingError("body")
         }
         self.body = body
     }
 
     public var description: String {
-        "HTTPResponse(\(requestID), status: \(statusCode), \(body.count) bytes)"
+        "HTTPResponse(\(requestID), status: \(statusCode), \(body.readableBytes) bytes)"
     }
 }
 

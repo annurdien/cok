@@ -125,7 +125,7 @@ final class ConnectionManagerTests: XCTestCase {
             method: "GET",
             path: "/test",
             headers: [],
-            body: Data(),
+            body: ByteBuffer(),
             remoteAddress: "localhost"
         )
 

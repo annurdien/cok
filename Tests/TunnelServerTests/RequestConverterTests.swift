@@ -1,6 +1,7 @@
-import XCTest
 import NIOCore
 import NIOHTTP1
+import XCTest
+
 @testable import TunnelCore
 @testable import TunnelServer
 
@@ -15,7 +16,7 @@ final class RequestConverterTests: XCTestCase {
         let headers = HTTPHeaders([
             ("host", "example.com"),
             ("user-agent", "test"),
-            ("content-type", "application/json")
+            ("content-type", "application/json"),
         ])
 
         let body = "test body"
@@ -38,11 +39,13 @@ final class RequestConverterTests: XCTestCase {
         XCTAssertEqual(message.method, "POST")
         XCTAssertEqual(message.path, "/api/test?param=value")
         XCTAssertEqual(message.remoteAddress, "192.168.1.1")
-        XCTAssertEqual(message.body, Data(body.utf8))
+        XCTAssertEqual(message.body, buffer)
 
         XCTAssertTrue(message.headers.contains { $0.name == "host" && $0.value == "example.com" })
         XCTAssertTrue(message.headers.contains { $0.name == "user-agent" && $0.value == "test" })
-        XCTAssertTrue(message.headers.contains { $0.name == "content-type" && $0.value == "application/json" })
+        XCTAssertTrue(
+            message.headers.contains { $0.name == "content-type" && $0.value == "application/json" }
+        )
     }
 
     func testConvertEmptyBodyRequest() {
@@ -63,7 +66,7 @@ final class RequestConverterTests: XCTestCase {
 
         XCTAssertEqual(message.method, "GET")
         XCTAssertEqual(message.path, "/")
-        XCTAssertTrue(message.body.isEmpty)
+        XCTAssertEqual(message.body.readableBytes, 0)
     }
 
     func testConvertProtocolResponseToHTTPResponse() {
@@ -73,9 +76,9 @@ final class RequestConverterTests: XCTestCase {
             statusCode: 201,
             headers: [
                 HTTPHeader(name: "content-type", value: "application/json"),
-                HTTPHeader(name: "x-custom", value: "value")
+                HTTPHeader(name: "x-custom", value: "value"),
             ],
-            body: Data("{\"status\":\"ok\"}".utf8)
+            body: ByteBuffer(string: "{\"status\":\"ok\"}")
         )
 
         let (head, bodyBuffer) = converter.toHTTPResponse(message: response)
@@ -97,7 +100,7 @@ final class RequestConverterTests: XCTestCase {
             requestID: requestID,
             statusCode: 204,
             headers: [],
-            body: Data()
+            body: ByteBuffer()
         )
 
         let (head, bodyBuffer) = converter.toHTTPResponse(message: response)
@@ -113,7 +116,7 @@ final class RequestConverterTests: XCTestCase {
             ("accept", "text/html"),
             ("accept-encoding", "gzip, deflate"),
             ("accept-language", "en-US"),
-            ("cookie", "session=abc123")
+            ("cookie", "session=abc123"),
         ])
 
         let request = HTTPRequestHead(
@@ -132,6 +135,7 @@ final class RequestConverterTests: XCTestCase {
 
         XCTAssertEqual(message.headers.count, 6)
         XCTAssertTrue(message.headers.contains { $0.name == "host" && $0.value == "example.com" })
-        XCTAssertTrue(message.headers.contains { $0.name == "cookie" && $0.value == "session=abc123" })
+        XCTAssertTrue(
+            message.headers.contains { $0.name == "cookie" && $0.value == "session=abc123" })
     }
 }

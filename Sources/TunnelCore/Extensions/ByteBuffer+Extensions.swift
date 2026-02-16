@@ -96,4 +96,20 @@ extension ByteBuffer {
         }
         return Data(bytes)
     }
+
+    // MARK: - ByteBuffer
+    public mutating func writeBufferWithLength(_ buffer: ByteBuffer) {
+        writeInteger(UInt32(buffer.readableBytes))
+        var bufferCopy = buffer
+        writeBuffer(&bufferCopy)
+    }
+
+    public mutating func readBufferWithLength() -> ByteBuffer? {
+        guard let length = readInteger(as: UInt32.self),
+            let buffer = readSlice(length: Int(length))
+        else {
+            return nil
+        }
+        return buffer
+    }
 }

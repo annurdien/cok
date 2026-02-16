@@ -69,7 +69,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
                 HTTPHeader(name: "content-type", value: "application/json"),
                 HTTPHeader(name: "host", value: "test.example.com"),
             ],
-            body: Data("{\"key\":\"value\"}".utf8),
+            body: ByteBuffer(string: "{\"key\":\"value\"}"),
             remoteAddress: "192.168.1.1"
         )
 
@@ -92,7 +92,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
             requestID: requestID,
             statusCode: 201,
             headers: [HTTPHeader(name: "content-type", value: "application/json")],
-            body: Data("{\"id\":1}".utf8)
+            body: ByteBuffer(string: "{\"id\":1}")
         )
 
         await requestTracker.complete(requestID: requestID, response: response)
@@ -187,7 +187,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
                 HTTPHeader(name: "authorization", value: "Bearer token"),
                 HTTPHeader(name: "content-type", value: "application/json"),
             ],
-            body: Data("{\"update\":true}".utf8),
+            body: ByteBuffer(string: "{\"update\":true}"),
             remoteAddress: "172.16.0.1"
         )
 
@@ -377,7 +377,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
                 method: "GET",
                 path: "/",
                 headers: [],
-                body: Data(),
+                body: ByteBuffer(),
                 remoteAddress: "localhost"
             )
             try await connectionManager.sendRequest(tunnelID: nonExistentID, request: request)

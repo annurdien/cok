@@ -181,12 +181,17 @@ public actor LocalRequestHandler {
     private func handleHTTPRequest(_ frame: ProtocolFrame) async throws {
         let request = try codec.decode(HTTPRequestMessage.self, from: frame.payload)
 
+        let safeRequestID =
+            (try? InputSanitizer.sanitizeString(request.requestID.uuidString)) ?? "unknown"
+        let safeMethod = (try? InputSanitizer.sanitizeString(request.method)) ?? "unknown-method"
+        let safePath = (try? InputSanitizer.sanitizePath(request.path)) ?? "invalid-path"
+
         logger.debug(
             "Received request from tunnel",
             metadata: [
-                "requestID": "\(request.requestID.uuidString.prefix(8))",
-                "method": "\(request.method)",
-                "path": "\(request.path)",
+                "requestID": "\(safeRequestID.prefix(8))",
+                "method": "\(safeMethod)",
+                "path": "\(safePath)",
             ])
 
         do {
@@ -206,22 +211,24 @@ public actor LocalRequestHandler {
             logger.debug(
                 "Sent response back through tunnel",
                 metadata: [
-                    "requestID": "\(request.requestID.uuidString.prefix(8))",
+                    "requestID": "\(safeRequestID.prefix(8))",
                     "status": "\(response.statusCode)",
                 ])
         } catch {
+            let safeError =
+                (try? InputSanitizer.sanitizeString(error.localizedDescription)) ?? "unknown-error"
             logger.error(
                 "Failed to forward request to local server",
                 metadata: [
-                    "requestID": "\(request.requestID.uuidString.prefix(8))",
-                    "error": "\(error.localizedDescription)",
+                    "requestID": "\(safeRequestID.prefix(8))",
+                    "error": "\(safeError)",
                 ])
 
             let errorResponse = HTTPResponseMessage(
                 requestID: request.requestID,
                 statusCode: 502,
                 headers: [HTTPHeader(name: "Content-Type", value: "text/plain")],
-                body: Data("Bad Gateway: Failed to reach local server".utf8)
+                body: ByteBuffer(string: "Bad Gateway: Failed to reach local server")
             )
 
             let responseBuffer = try codec.encode(errorResponse)
@@ -249,8 +256,8 @@ public actor LocalRequestHandler {
             httpRequest.headers.add(name: header.name, value: header.value)
         }
 
-        if !request.body.isEmpty {
-            httpRequest.body = .bytes(request.body)
+        if request.body.readableBytes > 0 {
+            httpRequest.body = .bytes(request.body.readableBytesView)
         }
 
         let response = try await httpClient.execute(httpRequest, timeout: .seconds(30))
@@ -266,7 +273,7 @@ public actor LocalRequestHandler {
             requestID: request.requestID,
             statusCode: UInt16(response.status.code),
             headers: responseHeaders,
-            body: Data(buffer: responseBody)
+            body: responseBody
         )
     }
 
@@ -321,20 +328,12 @@ public actor LocalRequestHandler {
     ) -> HTTPRequestMessage {
         let headers = head.headers.map { HTTPHeader(name: $0.name, value: $0.value) }
 
-        var bodyData = Data()
-        if body.readableBytes > 0 {
-            var buffer = body
-            if let bytes = buffer.readBytes(length: buffer.readableBytes) {
-                bodyData = Data(bytes)
-            }
-        }
-
         return HTTPRequestMessage(
             requestID: requestID,
             method: head.method.rawValue,
             path: head.uri,
             headers: headers,
-            body: bodyData,
+            body: body,
             remoteAddress: "localhost"
         )
     }
@@ -350,16 +349,14 @@ public actor LocalRequestHandler {
         }
 
         if !headers.contains(name: "Content-Length") {
-            headers.add(name: "Content-Length", value: "\(message.body.count)")
+            headers.add(name: "Content-Length", value: "\(message.body.readableBytes)")
         }
 
         let head = HTTPResponseHead(version: .http1_1, status: status, headers: headers)
 
         let body: ByteBuffer?
-        if !message.body.isEmpty {
-            var buffer = ByteBufferAllocator().buffer(capacity: message.body.count)
-            buffer.writeBytes(message.body)
-            body = buffer
+        if message.body.readableBytes > 0 {
+            body = message.body
         } else {
             body = nil
         }

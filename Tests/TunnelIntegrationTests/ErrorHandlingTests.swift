@@ -38,7 +38,7 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
             method: "GET",
             path: "/",
             headers: [],
-            body: Data(),
+            body: ByteBuffer(),
             remoteAddress: "localhost"
         )
 
@@ -167,7 +167,7 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
             requestID: requestID,
             statusCode: 200,
             headers: [],
-            body: Data()
+            body: ByteBuffer()
         )
 
         await shortTracker.complete(requestID: requestID, response: response)
@@ -209,13 +209,15 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
             channel: channel
         )
 
-        let largeBody = Data(repeating: 65, count: 1024 * 1024)
+        var largeBuffer = ByteBufferAllocator().buffer(capacity: 1024 * 1024)
+        largeBuffer.writeBytes(Array(repeating: UInt8(65), count: 1024 * 1024))
+
         let request = HTTPRequestMessage(
             requestID: UUID(),
             method: "POST",
             path: "/upload",
             headers: [HTTPHeader(name: "content-type", value: "application/octet-stream")],
-            body: largeBody,
+            body: largeBuffer,
             remoteAddress: "localhost"
         )
 
@@ -228,7 +230,7 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
 
         let codec = BinaryMessageCodec()
         let decodedRequest = try codec.decode(HTTPRequestMessage.self, from: frame!.payload)
-        XCTAssertEqual(decodedRequest.body.count, 1024 * 1024)
+        XCTAssertEqual(decodedRequest.body.readableBytes, 1024 * 1024)
 
         try? await channel.close()
     }

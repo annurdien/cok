@@ -34,15 +34,21 @@ public struct RequestSizeValidator: Sendable {
     }
 
     public static func validateHeadersSize(_ size: Int) throws {
-        guard size <= maxHeadersSize else { throw ValidationError.headersTooLarge(size: size, maximum: maxHeadersSize) }
+        guard size <= maxHeadersSize else {
+            throw ValidationError.headersTooLarge(size: size, maximum: maxHeadersSize)
+        }
     }
 
     public static func validateBodySize(_ size: Int) throws {
-        guard size <= maxBodySize else { throw ValidationError.bodyTooLarge(size: size, maximum: maxBodySize) }
+        guard size <= maxBodySize else {
+            throw ValidationError.bodyTooLarge(size: size, maximum: maxBodySize)
+        }
     }
 
     public static func validateFrameSize(_ size: Int) throws {
-        guard size <= maxWebSocketFrameSize else { throw ValidationError.frameTooLarge(size: size, maximum: maxWebSocketFrameSize) }
+        guard size <= maxWebSocketFrameSize else {
+            throw ValidationError.frameTooLarge(size: size, maximum: maxWebSocketFrameSize)
+        }
     }
 
     public static func validateBufferSize(_ buffer: ByteBuffer) throws {
@@ -50,22 +56,28 @@ public struct RequestSizeValidator: Sendable {
     }
 
     public static func validateHeaderCount(_ count: Int) throws {
-        guard count <= maxHeaderCount else { throw ValidationError.tooManyHeaders(count: count, maximum: maxHeaderCount) }
+        guard count <= maxHeaderCount else {
+            throw ValidationError.tooManyHeaders(count: count, maximum: maxHeaderCount)
+        }
     }
 
     public static func validateHeaderValue(_ value: String) throws {
         guard value.count <= maxHeaderValueLength else {
-            throw ValidationError.headerValueTooLong(length: value.count, maximum: maxHeaderValueLength)
+            throw ValidationError.headerValueTooLong(
+                length: value.count, maximum: maxHeaderValueLength)
         }
     }
 
     public static func validatePath(_ path: String) throws {
-        guard path.count <= maxPathLength else { throw ValidationError.pathTooLong(length: path.count, maximum: maxPathLength) }
+        guard path.count <= maxPathLength else {
+            throw ValidationError.pathTooLong(length: path.count, maximum: maxPathLength)
+        }
     }
 
     public static func validateSubdomain(_ subdomain: String) throws {
         guard subdomain.count <= maxSubdomainLength else {
-            throw ValidationError.subdomainTooLong(length: subdomain.count, maximum: maxSubdomainLength)
+            throw ValidationError.subdomainTooLong(
+                length: subdomain.count, maximum: maxSubdomainLength)
         }
     }
 
@@ -73,13 +85,13 @@ public struct RequestSizeValidator: Sendable {
         try validatePath(message.path)
         try validateHeaderCount(message.headers.count)
         for header in message.headers { try validateHeaderValue(header.value) }
-        try validateBodySize(message.body.count)
+        try validateBodySize(message.body.readableBytes)
     }
 
     public static func validateHTTPResponse(_ message: HTTPResponseMessage) throws {
         try validateHeaderCount(message.headers.count)
         for header in message.headers { try validateHeaderValue(header.value) }
-        try validateBodySize(message.body.count)
+        try validateBodySize(message.body.readableBytes)
     }
 
     public static func formatSize(_ bytes: Int) -> String {
@@ -90,6 +102,7 @@ public struct RequestSizeValidator: Sendable {
             value /= 1024
             idx += 1
         }
-        return idx == 0 ? "\(Int(value)) \(units[idx])" : String(format: "%.2f %@", value, units[idx])
+        return idx == 0
+            ? "\(Int(value)) \(units[idx])" : String(format: "%.2f %@", value, units[idx])
     }
 }

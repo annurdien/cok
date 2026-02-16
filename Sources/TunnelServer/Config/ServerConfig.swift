@@ -8,6 +8,7 @@ public struct ServerConfig: Sendable {
     public let maxTunnels: Int
     public let apiKeySecret: String
     public let baseDomain: String
+    public let healthCheckPaths: Set<String>
 
     public init(
         host: String = "0.0.0.0",
@@ -16,7 +17,8 @@ public struct ServerConfig: Sendable {
         allowedHosts: Set<String> = ["localhost"],
         maxTunnels: Int = 1000,
         apiKeySecret: String,
-        baseDomain: String = "localhost"
+        baseDomain: String = "localhost",
+        healthCheckPaths: Set<String> = ["/health", "/health/live", "/health/ready"]
     ) {
         self.host = host
         self.httpPort = httpPort
@@ -25,6 +27,7 @@ public struct ServerConfig: Sendable {
         self.maxTunnels = maxTunnels
         self.apiKeySecret = apiKeySecret
         self.baseDomain = baseDomain
+        self.healthCheckPaths = healthCheckPaths
     }
 
     public static func fromEnvironment() -> ServerConfig {
@@ -36,9 +39,17 @@ public struct ServerConfig: Sendable {
                 String($0).trimmingCharacters(in: .whitespaces)
             })
         let maxTunnels = Int(ProcessInfo.processInfo.environment["MAX_TUNNELS"] ?? "1000") ?? 1000
-        let apiKeySecret =
-            ProcessInfo.processInfo.environment["API_KEY_SECRET"] ?? "change-me-in-production"
+        guard let apiKeySecret = ProcessInfo.processInfo.environment["API_KEY_SECRET"] else {
+            fatalError("API_KEY_SECRET environment variable is required")
+        }
         let baseDomain = ProcessInfo.processInfo.environment["BASE_DOMAIN"] ?? "localhost"
+        let healthCheckPathsStr =
+            ProcessInfo.processInfo.environment["HEALTH_CHECK_PATHS"]
+            ?? "/health,/health/live,/health/ready"
+        let healthCheckPaths = Set(
+            healthCheckPathsStr.split(separator: ",").map {
+                String($0).trimmingCharacters(in: .whitespaces)
+            })
 
         return ServerConfig(
             httpPort: httpPort,
@@ -46,7 +57,8 @@ public struct ServerConfig: Sendable {
             allowedHosts: allowedHosts,
             maxTunnels: maxTunnels,
             apiKeySecret: apiKeySecret,
-            baseDomain: baseDomain
+            baseDomain: baseDomain,
+            healthCheckPaths: healthCheckPaths
         )
     }
 }

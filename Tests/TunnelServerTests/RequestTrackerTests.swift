@@ -28,7 +28,7 @@ final class RequestTrackerTests: XCTestCase, @unchecked Sendable {
             requestID: requestID,
             statusCode: 200,
             headers: [HTTPHeader(name: "content-type", value: "text/plain")],
-            body: Data("test".utf8)
+            body: ByteBuffer(string: "test")
         )
 
         await tracker.complete(requestID: requestID, response: response)
@@ -54,7 +54,7 @@ final class RequestTrackerTests: XCTestCase, @unchecked Sendable {
             requestID: id1,
             statusCode: 200,
             headers: [],
-            body: Data()
+            body: ByteBuffer()
         )
         await tracker.complete(requestID: id1, response: response)
 
@@ -112,7 +112,7 @@ final class RequestTrackerTests: XCTestCase, @unchecked Sendable {
             requestID: requestID,
             statusCode: 200,
             headers: [],
-            body: Data()
+            body: ByteBuffer()
         )
 
         await tracker.complete(requestID: requestID, response: response)

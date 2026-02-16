@@ -33,7 +33,7 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
             method: "GET",
             path: "/test",
             headers: [HTTPHeader(name: "host", value: "test.example.com")],
-            body: Data(),
+            body: ByteBuffer(),
             remoteAddress: "localhost"
         )
 
@@ -65,14 +65,14 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
             requestID: requestID,
             statusCode: 200,
             headers: [HTTPHeader(name: "content-type", value: "text/plain")],
-            body: Data("OK".utf8)
+            body: ByteBuffer(string: "OK")
         )
 
         await requestTracker.complete(requestID: requestID, response: httpResponse)
 
         let response = try await responseTask.value
         XCTAssertEqual(response.statusCode, 200)
-        XCTAssertEqual(response.body, Data("OK".utf8))
+        XCTAssertEqual(response.body, ByteBuffer(string: "OK"))
 
         try? await channel.close()
     }
@@ -94,7 +94,7 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
             method: "GET",
             path: "/1",
             headers: [],
-            body: Data(),
+            body: ByteBuffer(),
             remoteAddress: "localhost"
         )
 
@@ -103,7 +103,7 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
             method: "GET",
             path: "/2",
             headers: [],
-            body: Data(),
+            body: ByteBuffer(),
             remoteAddress: "localhost"
         )
 
@@ -112,7 +112,7 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
             method: "GET",
             path: "/3",
             headers: [],
-            body: Data(),
+            body: ByteBuffer(),
             remoteAddress: "localhost"
         )
 
@@ -130,11 +130,11 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(count, 3)
 
         let response1 = HTTPResponseMessage(
-            requestID: id1, statusCode: 200, headers: [], body: Data("1".utf8))
+            requestID: id1, statusCode: 200, headers: [], body: ByteBuffer(string: "1"))
         let response2 = HTTPResponseMessage(
-            requestID: id2, statusCode: 200, headers: [], body: Data("2".utf8))
+            requestID: id2, statusCode: 200, headers: [], body: ByteBuffer(string: "2"))
         let response3 = HTTPResponseMessage(
-            requestID: id3, statusCode: 200, headers: [], body: Data("3".utf8))
+            requestID: id3, statusCode: 200, headers: [], body: ByteBuffer(string: "3"))
 
         await requestTracker.complete(requestID: id1, response: response1)
         await requestTracker.complete(requestID: id2, response: response2)
@@ -144,9 +144,9 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
         let result2 = try await task2.value
         let result3 = try await task3.value
 
-        XCTAssertEqual(result1.body, Data("1".utf8))
-        XCTAssertEqual(result2.body, Data("2".utf8))
-        XCTAssertEqual(result3.body, Data("3".utf8))
+        XCTAssertEqual(result1.body, ByteBuffer(string: "1"))
+        XCTAssertEqual(result2.body, ByteBuffer(string: "2"))
+        XCTAssertEqual(result3.body, ByteBuffer(string: "3"))
 
         try? await channel.close()
     }
@@ -165,7 +165,7 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
             method: "GET",
             path: "/test",
             headers: [],
-            body: Data(),
+            body: ByteBuffer(),
             remoteAddress: "localhost"
         )
 
@@ -203,7 +203,7 @@ final class ServerIntegrationTests: XCTestCase, @unchecked Sendable {
                 HTTPHeader(name: "content-type", value: "application/json"),
                 HTTPHeader(name: "authorization", value: "Bearer token123"),
             ],
-            body: Data("{\"test\":true}".utf8),
+            body: ByteBuffer(string: "{\"test\":true}"),
             remoteAddress: "192.168.1.100"
         )
 
