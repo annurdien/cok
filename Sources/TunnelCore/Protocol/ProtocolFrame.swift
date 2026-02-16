@@ -3,6 +3,8 @@ import NIOCore
 
 #if canImport(zlib)
     import zlib
+#elseif canImport(CZlib)
+    import CZlib
 #endif
 
 /*
