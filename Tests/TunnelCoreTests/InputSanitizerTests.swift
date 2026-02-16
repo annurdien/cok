@@ -143,8 +143,7 @@ final class InputSanitizerTests: XCTestCase {
     }
 
     func testValidateAPIKeyInvalidCharacters() {
-        let _ = String(repeating: "x", count: 64)
-        // 'x' is valid hex, but let's test with truly invalid chars
+        _ = String(repeating: "x", count: 64)
         let reallyInvalid = String(repeating: "g", count: 64)
         XCTAssertThrowsError(try InputSanitizer.validateAPIKey(reallyInvalid))
     }

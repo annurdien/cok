@@ -8,7 +8,6 @@ public actor TunnelClient {
     private let tcpClient: TunnelTCPClient
     private let circuitBreaker: CircuitBreaker
     private let requestHandler: LocalRequestHandler
-    private let localProxy: LocalHTTPProxy
     private var isRunning: Bool = false
 
     public init(config: ClientConfig, logger: Logger) throws {
@@ -30,11 +29,6 @@ public actor TunnelClient {
             logger: logger
         )
 
-        self.localProxy = LocalHTTPProxy(
-            config: config,
-            requestHandler: requestHandler,
-            logger: logger
-        )
     }
 
     private func setupMessageHandling() async {

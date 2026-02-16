@@ -140,11 +140,6 @@ public actor TunnelTCPClient {
     }
 }
 
-struct UncheckedSendable<T>: @unchecked Sendable {
-    let value: T
-    init(_ value: T) { self.value = value }
-}
-
 final class TCPClientHandler: ChannelInboundHandler, Sendable {
     typealias InboundIn = ProtocolFrame
     let actor: TunnelTCPClient

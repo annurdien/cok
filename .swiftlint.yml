@@ -17,6 +17,7 @@ disabled_rules:
   - single_test_class
   - vertical_parameter_alignment_on_call
   - redundant_string_enum_value
+  - opening_brace
 
 opt_in_rules:
   - array_init
