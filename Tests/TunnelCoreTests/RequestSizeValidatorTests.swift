@@ -1,16 +1,20 @@
-import XCTest
 import NIOCore
+import XCTest
+
 @testable import TunnelCore
 
 final class RequestSizeValidatorTests: XCTestCase {
 
     func testValidateBodySizeWithinLimit() throws {
         XCTAssertNoThrow(try RequestSizeValidator.validateBodySize(1024))
-        XCTAssertNoThrow(try RequestSizeValidator.validateBodySize(RequestSizeValidator.maxBodySize))
+        XCTAssertNoThrow(
+            try RequestSizeValidator.validateBodySize(RequestSizeValidator.maxBodySize))
     }
 
     func testValidateBodySizeExceedsLimit() {
-        XCTAssertThrowsError(try RequestSizeValidator.validateBodySize(RequestSizeValidator.maxBodySize + 1)) { error in
+        XCTAssertThrowsError(
+            try RequestSizeValidator.validateBodySize(RequestSizeValidator.maxBodySize + 1)
+        ) { error in
             guard case RequestSizeValidator.ValidationError.bodyTooLarge = error else {
                 XCTFail("Expected bodyTooLarge error")
                 return
@@ -20,11 +24,14 @@ final class RequestSizeValidatorTests: XCTestCase {
 
     func testValidateHeadersSizeWithinLimit() throws {
         XCTAssertNoThrow(try RequestSizeValidator.validateHeadersSize(1024))
-        XCTAssertNoThrow(try RequestSizeValidator.validateHeadersSize(RequestSizeValidator.maxHeadersSize))
+        XCTAssertNoThrow(
+            try RequestSizeValidator.validateHeadersSize(RequestSizeValidator.maxHeadersSize))
     }
 
     func testValidateHeadersSizeExceedsLimit() {
-        XCTAssertThrowsError(try RequestSizeValidator.validateHeadersSize(RequestSizeValidator.maxHeadersSize + 1)) { error in
+        XCTAssertThrowsError(
+            try RequestSizeValidator.validateHeadersSize(RequestSizeValidator.maxHeadersSize + 1)
+        ) { error in
             guard case RequestSizeValidator.ValidationError.headersTooLarge = error else {
                 XCTFail("Expected headersTooLarge error")
                 return
@@ -34,11 +41,14 @@ final class RequestSizeValidatorTests: XCTestCase {
 
     func testValidateFrameSizeWithinLimit() throws {
         XCTAssertNoThrow(try RequestSizeValidator.validateFrameSize(1024))
-        XCTAssertNoThrow(try RequestSizeValidator.validateFrameSize(RequestSizeValidator.maxWebSocketFrameSize))
+        XCTAssertNoThrow(
+            try RequestSizeValidator.validateFrameSize(RequestSizeValidator.maxFrameSize))
     }
 
     func testValidateFrameSizeExceedsLimit() {
-        XCTAssertThrowsError(try RequestSizeValidator.validateFrameSize(RequestSizeValidator.maxWebSocketFrameSize + 1)) { error in
+        XCTAssertThrowsError(
+            try RequestSizeValidator.validateFrameSize(RequestSizeValidator.maxFrameSize + 1)
+        ) { error in
             guard case RequestSizeValidator.ValidationError.frameTooLarge = error else {
                 XCTFail("Expected frameTooLarge error")
                 return
@@ -48,11 +58,14 @@ final class RequestSizeValidatorTests: XCTestCase {
 
     func testValidateHeaderCountWithinLimit() throws {
         XCTAssertNoThrow(try RequestSizeValidator.validateHeaderCount(50))
-        XCTAssertNoThrow(try RequestSizeValidator.validateHeaderCount(RequestSizeValidator.maxHeaderCount))
+        XCTAssertNoThrow(
+            try RequestSizeValidator.validateHeaderCount(RequestSizeValidator.maxHeaderCount))
     }
 
     func testValidateHeaderCountExceedsLimit() {
-        XCTAssertThrowsError(try RequestSizeValidator.validateHeaderCount(RequestSizeValidator.maxHeaderCount + 1)) { error in
+        XCTAssertThrowsError(
+            try RequestSizeValidator.validateHeaderCount(RequestSizeValidator.maxHeaderCount + 1)
+        ) { error in
             guard case RequestSizeValidator.ValidationError.tooManyHeaders = error else {
                 XCTFail("Expected tooManyHeaders error")
                 return
@@ -83,7 +96,8 @@ final class RequestSizeValidatorTests: XCTestCase {
     }
 
     func testValidateSubdomainExceedsLimit() {
-        let longSubdomain = String(repeating: "a", count: RequestSizeValidator.maxSubdomainLength + 1)
+        let longSubdomain = String(
+            repeating: "a", count: RequestSizeValidator.maxSubdomainLength + 1)
         XCTAssertThrowsError(try RequestSizeValidator.validateSubdomain(longSubdomain)) { error in
             guard case RequestSizeValidator.ValidationError.subdomainTooLong = error else {
                 XCTFail("Expected subdomainTooLong error")
@@ -122,10 +136,12 @@ final class RequestSizeValidatorTests: XCTestCase {
         XCTAssertTrue(bodyError.message.contains("100"))
         XCTAssertTrue(bodyError.message.contains("50"))
 
-        let headersError = RequestSizeValidator.ValidationError.headersTooLarge(size: 200, maximum: 100)
+        let headersError = RequestSizeValidator.ValidationError.headersTooLarge(
+            size: 200, maximum: 100)
         XCTAssertTrue(headersError.message.contains("200"))
 
-        let countError = RequestSizeValidator.ValidationError.tooManyHeaders(count: 150, maximum: 100)
+        let countError = RequestSizeValidator.ValidationError.tooManyHeaders(
+            count: 150, maximum: 100)
         XCTAssertTrue(countError.message.contains("150"))
     }
 }

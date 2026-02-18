@@ -137,8 +137,8 @@ final class RateLimiterTests: XCTestCase {
         XCTAssertEqual(httpTokens, 120)
     }
 
-    func testPresetConfigurationWebSocket() async {
-        let wsLimiter = RateLimiter(configuration: .websocket)
+    func testPresetConfigurationTunnel() async {
+        let wsLimiter = RateLimiter(configuration: .tunnel)
         let wsTokens = await wsLimiter.availableTokens(identifier: "test")
         XCTAssertEqual(wsTokens, 300)
     }
