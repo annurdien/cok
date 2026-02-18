@@ -1,5 +1,8 @@
 # Cok - HTTP Tunnel
 
+[![CI](https://github.com/annurdien/cok/actions/workflows/ci.yml/badge.svg)](https://github.com/annurdien/cok/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/annurdien/cok/branch/main/graph/badge.svg)](https://codecov.io/gh/annurdien/cok)
+
 Expose local web servers to the internet via public URLs.
 
 1. [Install](#install)
