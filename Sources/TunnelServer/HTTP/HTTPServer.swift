@@ -60,6 +60,11 @@ public final class HTTPServer: Sendable {
     }
 }
 
+// @unchecked Sendable: `requestHead` and `requestBody` are mutable state that
+// is strictly event loop confined — they are only ever accessed from `channelRead`,
+// which NIO guarantees runs on the channel's dedicated event loop thread.
+// The async `handleRequest` dispatch captures these values by copy before hopping
+// off the event loop, so there is no concurrent access.
 final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = HTTPServerRequestPart
     typealias OutboundOut = HTTPServerResponsePart

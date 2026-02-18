@@ -30,7 +30,7 @@ public struct ServerConfig: Sendable {
         self.healthCheckPaths = healthCheckPaths
     }
 
-    public static func fromEnvironment() -> ServerConfig {
+    public static func fromEnvironment() throws -> ServerConfig {
         let httpPort = Int(ProcessInfo.processInfo.environment["HTTP_PORT"] ?? "8080") ?? 8080
         let wsPort = Int(ProcessInfo.processInfo.environment["WS_PORT"] ?? "5000") ?? 5000
         let allowedHostsStr = ProcessInfo.processInfo.environment["ALLOWED_HOSTS"] ?? "localhost"
@@ -39,9 +39,14 @@ public struct ServerConfig: Sendable {
                 String($0).trimmingCharacters(in: .whitespaces)
             })
         let maxTunnels = Int(ProcessInfo.processInfo.environment["MAX_TUNNELS"] ?? "1000") ?? 1000
-        guard let apiKeySecret = ProcessInfo.processInfo.environment["API_KEY_SECRET"] else {
-            fatalError("API_KEY_SECRET environment variable is required")
+
+        guard
+            let apiKeySecret = ProcessInfo.processInfo.environment["API_KEY_SECRET"],
+            !apiKeySecret.isEmpty
+        else {
+            throw ServerConfigError.missingRequired("API_KEY_SECRET")
         }
+
         let baseDomain = ProcessInfo.processInfo.environment["BASE_DOMAIN"] ?? "localhost"
         let healthCheckPathsStr =
             ProcessInfo.processInfo.environment["HEALTH_CHECK_PATHS"]
@@ -60,5 +65,16 @@ public struct ServerConfig: Sendable {
             baseDomain: baseDomain,
             healthCheckPaths: healthCheckPaths
         )
+    }
+}
+
+public enum ServerConfigError: Error, CustomStringConvertible {
+    case missingRequired(String)
+
+    public var description: String {
+        switch self {
+        case .missingRequired(let key):
+            return "Missing required environment variable: \(key)"
+        }
     }
 }

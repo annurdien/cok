@@ -9,7 +9,13 @@ LoggingSystem.bootstrap { label in
 }
 
 let logger = Logger(label: "cok.server")
-let config = ServerConfig.fromEnvironment()
+let config: ServerConfig
+do {
+    config = try ServerConfig.fromEnvironment()
+} catch {
+    logger.critical("Server configuration error: \(error)")
+    exit(1)
+}
 
 logger.info(
     "Starting Cok Server",

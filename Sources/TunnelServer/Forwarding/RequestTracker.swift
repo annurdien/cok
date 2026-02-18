@@ -3,7 +3,12 @@ import Logging
 import TunnelCore
 
 public actor RequestTracker {
-    private var pending: [UUID: CheckedContinuation<HTTPResponseMessage, Error>] = [:]
+    private struct PendingRequest {
+        let continuation: CheckedContinuation<HTTPResponseMessage, Error>
+        let timeoutTask: Task<Void, Never>
+    }
+
+    private var pending: [UUID: PendingRequest] = [:]
     private let timeout: TimeInterval
     private let logger: Logger
 
@@ -14,73 +19,92 @@ public actor RequestTracker {
 
     public func track(requestID: UUID) async throws -> HTTPResponseMessage {
         return try await withCheckedThrowingContinuation { continuation in
-            pending[requestID] = continuation
+            let timeoutTask = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try await Task.sleep(for: .seconds(timeout))
+                } catch {
+                    return
+                }
+                await self.expire(requestID: requestID)
+            }
+
+            pending[requestID] = PendingRequest(
+                continuation: continuation,
+                timeoutTask: timeoutTask
+            )
 
             logger.debug(
                 "Tracking request",
                 metadata: [
                     "requestID": "\(requestID.uuidString.prefix(8))",
                     "timeout": "\(timeout)s",
-                ])
-
-            Task {
-                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-
-                if let storedContinuation = pending.removeValue(forKey: requestID) {
-                    logger.warning(
-                        "Request timeout",
-                        metadata: [
-                            "requestID": "\(requestID.uuidString.prefix(8))"
-                        ])
-                    storedContinuation.resume(
-                        throwing: TunnelError.client(
-                            .timeout, context: ErrorContext(component: "RequestTracker")))
-                }
-            }
+                ]
+            )
         }
     }
 
     public func complete(requestID: UUID, response: HTTPResponseMessage) {
-        guard let continuation = pending.removeValue(forKey: requestID) else {
+        guard let entry = pending.removeValue(forKey: requestID) else {
             logger.warning(
                 "Response for unknown request",
-                metadata: [
-                    "requestID": "\(requestID.uuidString.prefix(8))"
-                ])
+                metadata: ["requestID": "\(requestID.uuidString.prefix(8))"]
+            )
             return
         }
+
+        entry.timeoutTask.cancel()
 
         logger.debug(
             "Request completed",
             metadata: [
                 "requestID": "\(requestID.uuidString.prefix(8))",
                 "status": "\(response.statusCode)",
-            ])
+            ]
+        )
 
-        continuation.resume(returning: response)
+        entry.continuation.resume(returning: response)
     }
 
     public func fail(requestID: UUID, error: Error) {
-        guard let continuation = pending.removeValue(forKey: requestID) else {
+        guard let entry = pending.removeValue(forKey: requestID) else {
             logger.warning(
                 "Failure for unknown request",
-                metadata: [
-                    "requestID": "\(requestID.uuidString.prefix(8))"
-                ])
+                metadata: ["requestID": "\(requestID.uuidString.prefix(8))"]
+            )
             return
         }
+
+        entry.timeoutTask.cancel()
 
         logger.error(
             "Request failed",
             metadata: [
                 "requestID": "\(requestID.uuidString.prefix(8))",
                 "error": "\(error.localizedDescription)",
-            ])
+            ]
+        )
 
-        continuation.resume(throwing: error)
+        entry.continuation.resume(throwing: error)
     }
 
     public func pendingCount() -> Int {
-        return pending.count
+        pending.count
+    }
+
+    private func expire(requestID: UUID) {
+        guard let entry = pending.removeValue(forKey: requestID) else { return }
+
+        logger.warning(
+            "Request timed out",
+            metadata: ["requestID": "\(requestID.uuidString.prefix(8))"]
+        )
+
+        entry.continuation.resume(
+            throwing: TunnelError.client(
+                .timeout,
+                context: ErrorContext(component: "RequestTracker")
+            )
+        )
     }
 }

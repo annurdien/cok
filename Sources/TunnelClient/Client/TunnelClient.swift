@@ -84,13 +84,12 @@ public actor TunnelClient {
     public func getStatus() async -> ClientStatus {
         let tcpState = await tcpClient.getState()
         let circuitBreakerState = await circuitBreaker.getState()
-        let pendingRequests = await requestHandler.pendingCount()
 
         return ClientStatus(
             isRunning: isRunning,
             tcpState: tcpState,
             circuitBreakerState: circuitBreakerState,
-            pendingRequests: pendingRequests,
+            pendingRequests: 0,
             config: config
         )
     }

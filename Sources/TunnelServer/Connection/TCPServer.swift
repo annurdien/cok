@@ -13,7 +13,7 @@ final class TCPServer: Sendable {
     private let authService: AuthService
     private let requestTracker: RequestTracker
 
-    private let isRunning = ManagedAtomic(false)
+    private let isRunning = NIOLockedValueBox(false)
 
     init(
         config: ServerConfig,
@@ -75,7 +75,10 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
     private let requestTracker: RequestTracker
     private let codec: MessageCodec
 
-    private let tunnelID: ManagedAtomic<UUID?> = ManagedAtomic(nil)
+    /// The tunnel ID for this connection, set once after a successful connect
+    /// handshake. Guarded by NIOLockedValueBox for safe cross-isolation access
+    /// from channelInactive (called on the event loop) into async Tasks.
+    private let tunnelID: NIOLockedValueBox<UUID?> = NIOLockedValueBox(nil)
 
     init(
         logger: Logger,
@@ -155,7 +158,7 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
 
             try await send(response, type: .connectResponse, channel: channel)
 
-            tunnelID.set(tunnel.id)
+            tunnelID.withLockedValue { $0 = tunnel.id }
 
         } catch {
             let safeError = (try? InputSanitizer.sanitizeString("\(error)")) ?? "unknown-error"
@@ -190,10 +193,7 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
                 message = "Internal server error"
             }
 
-            let response = ErrorMessage(
-                code: code,
-                message: message
-            )
+            let response = ErrorMessage(code: code, message: message)
             try await send(response, type: .error, channel: channel)
 
             channel.close(promise: nil)
@@ -227,28 +227,11 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
     }
 
     func channelInactive(context: ChannelHandlerContext) {
-        if let id = tunnelID.get() {
+        if let id = tunnelID.withLockedValue({ $0 }) {
             let manager = self.connectionManager
             Task {
                 await manager.unregisterTunnel(id: id)
             }
         }
-    }
-}
-
-class ManagedAtomic<T: Sendable>: @unchecked Sendable {
-    private var value: T
-    private let lock = NIOLock()
-
-    init(_ value: T) {
-        self.value = value
-    }
-
-    func get() -> T {
-        lock.withLock { value }
-    }
-
-    func set(_ newValue: T) {
-        lock.withLock { value = newValue }
     }
 }
