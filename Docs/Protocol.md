@@ -72,7 +72,7 @@ All payloads are JSON-encoded.
 {
   "apiKey": "cok_prod_...",
   "requestedSubdomain": "myapp",  // optional
-  "clientVersion": "0.1.0",
+  "clientVersion": "0.2.0",
   "capabilities": ["http/1.1"]
 }
 ```
@@ -85,7 +85,7 @@ All payloads are JSON-encoded.
   "subdomain": "myapp",
   "sessionToken": "jwt...",
   "publicURL": "http://myapp.cok.dev",
-  "expiresAt": "2026-02-14T00:00:00Z"
+  "expiresAt": "2026-12-31T00:00:00Z"
 }
 ```
 

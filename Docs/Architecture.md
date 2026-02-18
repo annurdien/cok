@@ -2,7 +2,7 @@
 
 ## System Overview
 
-Cok is a tunnel server system that allows developers to expose local services to the internet through TCP tunnel-based tunnels.
+Cok is a tunnel server that allows developers to expose local services to the internet through secure TCP-based tunnels.
 
 ```
 ┌─────────────┐    HTTPS     ┌─────────────────┐    TCP tunnel    ┌─────────────┐
@@ -108,32 +108,24 @@ CLI tool providing:
 
 ### Buffer Pooling
 
-Reusable ByteBuffer pool to minimize allocations:
+Reusable `ByteBuffer` pool to minimize allocations in the NIO pipeline:
 
 ```swift
-let pool = BufferPoolActor(capacity: 100, bufferSize: 8192)
-let buffer = await pool.acquire(minimumCapacity: 1024)
-defer { await pool.release(buffer) }
+let pool = BufferPool(maxPoolSize: 100, defaultCapacity: 8192)
+let buffer = pool.acquire(minimumCapacity: 1024)
+defer { pool.release(buffer) }
 ```
+
+An actor-based variant (`BufferPoolActor`) is also available for use outside NIO pipelines.
 
 ### Backpressure Control
 
-Flow control to prevent memory exhaustion:
+Flow control to prevent memory exhaustion under load:
 
 ```swift
-let controller = BackpressureController(config: .default)
-guard await controller.requestPermission(cost: data.count) else {
-    // Apply backpressure
-}
-```
-
-### Connection Pooling
-
-HTTP connection reuse for outbound requests:
-
-```swift
-let pool = ConnectionPool()
-let conn = try await pool.acquire(host: "api.example.com", port: 443)
+let controller = BackpressureController(configuration: .default)
+let result = await controller.requestPermission()
+guard result.allowed else { /* shed load */ }
 ```
 
 ## Observability
@@ -142,10 +134,10 @@ let conn = try await pool.acquire(host: "api.example.com", port: 443)
 
 Prometheus-format metrics exposed at `/metrics`:
 
-- `cok_connections_total` - Total connections
-- `cok_requests_total` - Total requests by status
-- `cok_request_duration_seconds` - Request latency histogram
-- `cok_active_tunnels` - Current tunnel count
+- `cok_requests_total` — Total requests by method and status
+- `cok_request_duration_seconds` — Request latency histogram
+- `cok_active_connections` — Current active tunnel count
+- `cok_rate_limit_hits` — Rate limit rejections
 
 ### Tracing
 
