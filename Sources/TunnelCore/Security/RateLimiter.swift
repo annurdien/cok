@@ -98,22 +98,3 @@ public actor RateLimiter {
         lastCleanup = now
     }
 }
-
-public actor RateLimiterManager {
-    private var limiters: [String: RateLimiter] = [:]
-
-    public init() {}
-
-    public func limiter(for purpose: String, config: RateLimiter.Configuration) -> RateLimiter {
-        if let existing = limiters[purpose] { return existing }
-        let newLimiter = RateLimiter(configuration: config)
-        limiters[purpose] = newLimiter
-        return newLimiter
-    }
-
-    public func resetAll() async {
-        for limiter in limiters.values {
-            await limiter.resetAll()
-        }
-    }
-}

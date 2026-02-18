@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import TunnelCore
 
 final class RateLimiterTests: XCTestCase {
@@ -37,7 +38,7 @@ final class RateLimiterTests: XCTestCase {
     }
 
     func testTokenRefill() async throws {
-        let limiter = RateLimiter(configuration: .init(capacity: 10, refillRate: 10.0)) // 10 tokens per second
+        let limiter = RateLimiter(configuration: .init(capacity: 10, refillRate: 10.0))  // 10 tokens per second
 
         // Consume some tokens
         let consumed1 = await limiter.tryConsume(identifier: "test")
@@ -152,47 +153,5 @@ final class RateLimiterTests: XCTestCase {
         let stats = await limiter.statistics()
         XCTAssertEqual(stats["user1"], 9)
         XCTAssertEqual(stats["user2"], 8)
-    }
-}
-
-final class RateLimiterManagerTests: XCTestCase {
-
-    func testGetLimiter() async {
-        let manager = RateLimiterManager()
-
-        let limiter1 = await manager.limiter(for: "api", config: .api)
-        let limiter2 = await manager.limiter(for: "api", config: .api)
-
-        // Should return the same instance
-        XCTAssertTrue(limiter1 === limiter2)
-    }
-
-    func testMultipleLimiters() async {
-        let manager = RateLimiterManager()
-
-        let apiLimiter = await manager.limiter(for: "api", config: .api)
-        let httpLimiter = await manager.limiter(for: "http", config: .http)
-
-        // Should be different instances
-        XCTAssertTrue(apiLimiter !== httpLimiter)
-    }
-
-    func testResetAll() async {
-        let manager = RateLimiterManager()
-
-        let limiter1 = await manager.limiter(for: "api", config: .init(capacity: 5, refillRate: 1.0))
-        let limiter2 = await manager.limiter(for: "http", config: .init(capacity: 5, refillRate: 1.0))
-
-        // Consume tokens
-        _ = await limiter1.tryConsume(identifier: "test")
-        _ = await limiter2.tryConsume(identifier: "test")
-
-        await manager.resetAll()
-
-        // Both should be reset
-        let tokens1 = await limiter1.availableTokens(identifier: "test")
-        let tokens2 = await limiter2.availableTokens(identifier: "test")
-        XCTAssertEqual(tokens1, 5)
-        XCTAssertEqual(tokens2, 5)
     }
 }

@@ -12,16 +12,18 @@ public final class HTTPServer: Sendable {
     private let connectionManager: ConnectionManager
     private let requestTracker: RequestTracker
     private let rateLimiter: RateLimiter
+    private let healthChecker: HealthChecker
 
     public init(
         config: ServerConfig, logger: Logger, connectionManager: ConnectionManager,
-        requestTracker: RequestTracker, rateLimiter: RateLimiter
+        requestTracker: RequestTracker, rateLimiter: RateLimiter, healthChecker: HealthChecker
     ) {
         self.config = config
         self.logger = logger
         self.connectionManager = connectionManager
         self.requestTracker = requestTracker
         self.rateLimiter = rateLimiter
+        self.healthChecker = healthChecker
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
     }
 
@@ -37,7 +39,8 @@ public final class HTTPServer: Sendable {
                             logger: self.logger,
                             connectionManager: self.connectionManager,
                             requestTracker: self.requestTracker,
-                            rateLimiter: self.rateLimiter
+                            rateLimiter: self.rateLimiter,
+                            healthChecker: self.healthChecker
                         ))
                 }
             }
@@ -74,19 +77,21 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
     private let connectionManager: ConnectionManager
     private let requestTracker: RequestTracker
     private let rateLimiter: RateLimiter
+    private let healthChecker: HealthChecker
     private let converter: RequestConverter
     private var requestHead: HTTPRequestHead?
     private var requestBody: ByteBuffer?
 
     init(
         config: ServerConfig, logger: Logger, connectionManager: ConnectionManager,
-        requestTracker: RequestTracker, rateLimiter: RateLimiter
+        requestTracker: RequestTracker, rateLimiter: RateLimiter, healthChecker: HealthChecker
     ) {
         self.config = config
         self.logger = logger
         self.connectionManager = connectionManager
         self.requestTracker = requestTracker
         self.rateLimiter = rateLimiter
+        self.healthChecker = healthChecker
         self.converter = RequestConverter()
     }
 
@@ -125,7 +130,22 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
         body: ByteBuffer
     ) async {
         if config.healthCheckPaths.contains(head.uri) {
-            sendResponse(context: context, eventLoop: eventLoop, status: .ok, body: "OK")
+            let report = await healthChecker.runChecks()
+            let httpStatus: HTTPResponseStatus =
+                report.status == .healthy ? .ok : .serviceUnavailable
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            if let data = try? encoder.encode(report),
+                let json = String(data: data, encoding: .utf8)
+            {
+                sendResponse(
+                    context: context, eventLoop: eventLoop,
+                    status: httpStatus, body: json, contentType: "application/json")
+            } else {
+                sendResponse(
+                    context: context, eventLoop: eventLoop,
+                    status: httpStatus, body: report.status.rawValue)
+            }
             return
         }
 
@@ -302,13 +322,13 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
 
     private func sendResponse(
         context: ChannelHandlerContext, eventLoop: EventLoop, status: HTTPResponseStatus,
-        body: String
+        body: String, contentType: String = "text/plain; charset=utf-8"
     ) {
         nonisolated(unsafe) let ctx = context
         let wrapOut = self.wrapOutboundOut
         context.eventLoop.execute {
             var headers = HTTPHeaders()
-            headers.add(name: "Content-Type", value: "text/plain; charset=utf-8")
+            headers.add(name: "Content-Type", value: contentType)
             headers.add(name: "Content-Length", value: "\(body.utf8.count)")
             headers.add(name: "Connection", value: "close")
 

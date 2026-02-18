@@ -46,8 +46,6 @@ if let testSubdomain = ProcessInfo.processInfo.environment["TEST_SUBDOMAIN"] {
 
 let requestTracker = RequestTracker(timeout: 30.0, logger: logger)
 let httpRateLimiter = RateLimiter(configuration: .http)
-let wsRateLimiter = RateLimiter(configuration: .websocket)
-let metrics = MetricsCollector()
 let healthChecker = HealthChecker(version: "0.1.0")
 
 let httpServer = HTTPServer(
@@ -55,7 +53,8 @@ let httpServer = HTTPServer(
     logger: logger,
     connectionManager: connectionManager,
     requestTracker: requestTracker,
-    rateLimiter: httpRateLimiter
+    rateLimiter: httpRateLimiter,
+    healthChecker: healthChecker
 )
 
 let tcpServer = TCPServer(
