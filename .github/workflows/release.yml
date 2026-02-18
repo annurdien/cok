@@ -1,17 +1,24 @@
 name: Release
 
 on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g., v0.1.0, v0.2.0)'
+        description: 'Release version (e.g., v0.2.0)'
         required: true
         type: string
+
+# Works for both triggers: tag name or manual input
+env:
+  RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
 
 permissions:
   contents: write
   packages: write
-      
+
 concurrency:
   group: release
   cancel-in-progress: false
@@ -43,7 +50,7 @@ jobs:
           git add VERSION Sources/TunnelClient/CLI/CokCLI.swift
           git commit -m "Update version to $VERSION" || echo "No changes to commit"
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ env.RELEASE_VERSION }}
         
       - name: Select Xcode 26.2
         run: sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer
@@ -87,7 +94,7 @@ jobs:
           # Update CLI version
           sed -i "s/version: \"[0-9]\\+\\.[0-9]\\+\\.[0-9]\\+\"/version: \"$VERSION_NUM\"/" Sources/TunnelClient/CLI/CokCLI.swift
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ env.RELEASE_VERSION }}
 
       - name: Build for Linux
         run: |
@@ -125,8 +132,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ inputs.version }}
-          name: Release ${{ inputs.version }}
+          tag_name: ${{ env.RELEASE_VERSION }}
+          name: Release ${{ env.RELEASE_VERSION }}
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -162,7 +169,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/cok-server:${{ inputs.version }}
+            ghcr.io/${{ github.repository_owner }}/cok-server:${{ env.RELEASE_VERSION }}
             ghcr.io/${{ github.repository_owner }}/cok-server:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -176,7 +183,7 @@ jobs:
         id: sha_arm64
         run: |
           SHA=$(curl -sL \
-            "https://github.com/${{ github.repository }}/releases/download/${{ inputs.version }}/cok-arm64-apple-darwin.tar.gz" \
+            "https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_VERSION }}/cok-arm64-apple-darwin.tar.gz" \
             | sha256sum | cut -d' ' -f1)
           echo "sha=$SHA" >> $GITHUB_OUTPUT
 
@@ -184,7 +191,7 @@ jobs:
         id: sha_x86_64
         run: |
           SHA=$(curl -sL \
-            "https://github.com/${{ github.repository }}/releases/download/${{ inputs.version }}/cok-x86_64-apple-darwin.tar.gz" \
+            "https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_VERSION }}/cok-x86_64-apple-darwin.tar.gz" \
             | sha256sum | cut -d' ' -f1)
           echo "sha=$SHA" >> $GITHUB_OUTPUT
 
@@ -196,7 +203,7 @@ jobs:
 
       - name: Generate formula
         run: |
-          VERSION_NUM="${{ inputs.version }}"
+          VERSION_NUM="${{ env.RELEASE_VERSION }}"
           VERSION_NUM="${VERSION_NUM#v}"  # strip leading 'v'
 
           cat > homebrew-tap/Formula/cok.rb << EOF
@@ -208,10 +215,10 @@ jobs:
 
             on_macos do
               if Hardware::CPU.arm?
-                url "https://github.com/${{ github.repository }}/releases/download/${{ inputs.version }}/cok-arm64-apple-darwin.tar.gz"
+                url "https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_VERSION }}/cok-arm64-apple-darwin.tar.gz"
                 sha256 "${{ steps.sha_arm64.outputs.sha }}"
               else
-                url "https://github.com/${{ github.repository }}/releases/download/${{ inputs.version }}/cok-x86_64-apple-darwin.tar.gz"
+                url "https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_VERSION }}/cok-x86_64-apple-darwin.tar.gz"
                 sha256 "${{ steps.sha_x86_64.outputs.sha }}"
               end
             end
@@ -236,5 +243,5 @@ jobs:
           git config user.name "GitHub Action"
           git add Formula/cok.rb
           git diff --cached --quiet && echo "No changes to formula" && exit 0
-          git commit -m "cok ${{ inputs.version }}"
+          git commit -m "cok ${{ env.RELEASE_VERSION }}"
           git push
