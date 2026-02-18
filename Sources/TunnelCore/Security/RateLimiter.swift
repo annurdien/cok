@@ -16,7 +16,7 @@ public actor RateLimiter {
         public static let api = Configuration(capacity: 60, refillRate: 1.0)
         public static let connection = Configuration(capacity: 10, refillRate: 0.167)
         public static let http = Configuration(capacity: 120, refillRate: 2.0)
-        public static let websocket = Configuration(capacity: 300, refillRate: 5.0)
+        public static let tunnel = Configuration(capacity: 300, refillRate: 5.0)
     }
 
     private struct Bucket: Sendable {

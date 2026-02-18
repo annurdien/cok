@@ -24,7 +24,7 @@ WORKDIR /app
 COPY --from=builder /build/.build/release/cok-server /app/cok-server
 
 ENV HTTP_PORT=8080
-ENV WS_PORT=5000
+ENV TCP_PORT=5000
 ENV BASE_DOMAIN=localhost
 ENV MAX_TUNNELS=1000
 ENV API_KEY_SECRET=change-me-in-production

@@ -6,7 +6,7 @@ TEST_SECRET = test-secret-key-minimum-32-characters
 TEST_SUBDOMAIN = test-client
 LOCAL_PORT = 3000
 HTTP_PORT = 8080
-WS_PORT = 8081
+TCP_PORT = 5000
 
 # Generate API key from test credentials (cached)
 TEST_API_KEY := $(shell swift Scripts/generate-api-key.swift $(TEST_SUBDOMAIN) $(TEST_SECRET) 2>&1 | grep -Eo '[0-9a-f]{64}' | head -1)
@@ -46,14 +46,14 @@ make-server: build ## Run test server with predefined auth key
 	@echo "$(BLUE)  Starting Cok Test Server$(NC)"
 	@echo "$(BLUE)═══════════════════════════════════════$(NC)"
 	@echo "$(GREEN)HTTP Server:$(NC)  http://localhost:$(HTTP_PORT)"
-	@echo "$(GREEN)WebSocket:$(NC)    ws://localhost:$(WS_PORT)"
+	@echo "$(GREEN)TCP Port:$(NC)    localhost:$(TCP_PORT)"
 	@echo "$(GREEN)Base Domain:$(NC)  localhost"
 	@echo "$(GREEN)API Secret:$(NC)   $(TEST_SECRET)"
 	@echo "$(YELLOW)Generating test API key for subdomain: $(TEST_SUBDOMAIN)$(NC)"
 	@echo "$(BLUE)═══════════════════════════════════════$(NC)"
 	@echo ""
 	@HTTP_PORT=$(HTTP_PORT) \
-	WS_PORT=$(WS_PORT) \
+	TCP_PORT=$(TCP_PORT) \
 	BASE_DOMAIN=localhost \
 	API_KEY_SECRET=$(TEST_SECRET) \
 	TEST_SUBDOMAIN=$(TEST_SUBDOMAIN) \
@@ -69,7 +69,7 @@ make-client: build ## Run test client matching server credentials
 	echo "$(BLUE)═══════════════════════════════════════$(NC)"; \
 	echo "$(BLUE)  Starting Cok Test Client$(NC)"; \
 	echo "$(BLUE)═══════════════════════════════════════$(NC)"; \
-	echo "$(GREEN)Server:$(NC)       ws://localhost:$(WS_PORT)"; \
+	echo "$(GREEN)Server:$(NC)       localhost:$(TCP_PORT)"; \
 	echo "$(GREEN)Subdomain:$(NC)    $(TEST_SUBDOMAIN)"; \
 	echo "$(GREEN)Local Port:$(NC)   $(LOCAL_PORT)"; \
 	echo "$(GREEN)Public URL:$(NC)   http://$(TEST_SUBDOMAIN).localhost:$(HTTP_PORT)"; \
@@ -80,16 +80,16 @@ make-client: build ## Run test client matching server credentials
 		--port $(LOCAL_PORT) \
 		--subdomain $(TEST_SUBDOMAIN) \
 		--api-key $$API_KEY \
-		--server ws://localhost:$(WS_PORT)
+		--server localhost:$(TCP_PORT)
 
 server: build ## Build and start the development server
 	@echo "$(BLUE)Starting Cok server...$(NC)"
-	@echo "$(YELLOW)Server URL: ws://localhost:$(WS_PORT)$(NC)"
+	@echo "$(YELLOW)Server URL: localhost:$(TCP_PORT)$(NC)"
 	@echo "$(YELLOW)HTTP URL: http://localhost:$(HTTP_PORT)$(NC)"
 	@echo "$(YELLOW)API Secret: $(TEST_SECRET)$(NC)"
 	@echo ""
 	HTTP_PORT=$(HTTP_PORT) \
-	WS_PORT=$(WS_PORT) \
+	TCP_PORT=$(TCP_PORT) \
 	BASE_DOMAIN=localhost \
 	API_KEY_SECRET=$(TEST_SECRET) \
 	MAX_TUNNELS=10 \
@@ -98,7 +98,7 @@ server: build ## Build and start the development server
 test-server: build ## Start server in background for testing
 	@echo "$(BLUE)Starting test server in background...$(NC)"
 	@HTTP_PORT=$(HTTP_PORT) \
-	WS_PORT=$(WS_PORT) \
+	TCP_PORT=$(TCP_PORT) \
 	BASE_DOMAIN=localhost \
 	API_KEY_SECRET=$(TEST_SECRET) \
 	MAX_TUNNELS=10 \
@@ -124,7 +124,7 @@ generate-key: ## Generate API key for testing
 	echo "$(GREEN)Generated API key: $$API_KEY$(NC)"
 	@echo ""
 	@echo "$(YELLOW)Use this key with the client:$(NC)"
-	@echo "  cok --port $(LOCAL_PORT) --subdomain $(TEST_SUBDOMAIN) --api-key $$(cat .api_key.tmp) --server ws://localhost:$(WS_PORT)"
+	@echo "  cok --port $(LOCAL_PORT) --subdomain $(TEST_SUBDOMAIN) --api-key $$(cat .api_key.tmp) --server localhost:$(TCP_PORT)"
 
 client: build generate-key ## Connect client to local server
 	@echo "$(BLUE)Connecting client to server...$(NC)"
@@ -133,7 +133,7 @@ client: build generate-key ## Connect client to local server
 	echo "$(YELLOW)Connecting with subdomain: $(TEST_SUBDOMAIN)$(NC)"; \
 	echo "$(YELLOW)Forwarding: http://$(TEST_SUBDOMAIN).localhost:$(HTTP_PORT) → http://localhost:$(LOCAL_PORT)$(NC)"; \
 	echo ""; \
-	.build/release/cok --port $(LOCAL_PORT) --subdomain $(TEST_SUBDOMAIN) --api-key $$API_KEY --server ws://localhost:$(WS_PORT)
+	.build/release/cok --port $(LOCAL_PORT) --subdomain $(TEST_SUBDOMAIN) --api-key $$API_KEY --server localhost:$(TCP_PORT)
 
 test-client: build ## Connect client (assumes server is already running)
 	@echo "$(BLUE)Connecting test client...$(NC)"
@@ -143,11 +143,11 @@ test-client: build ## Connect client (assumes server is already running)
 		echo "$$API_KEY" > .api_key.tmp; \
 	fi
 	@API_KEY=$$(cat .api_key.tmp); \
-	echo "$(YELLOW)Connecting to: ws://localhost:$(WS_PORT)$(NC)"; \
+	echo "$(YELLOW)Connecting to: localhost:$(TCP_PORT)$(NC)"; \
 	echo "$(YELLOW)Subdomain: $(TEST_SUBDOMAIN)$(NC)"; \
 	echo "$(YELLOW)Local port: $(LOCAL_PORT)$(NC)"; \
 	echo ""; \
-	.build/release/cok --port $(LOCAL_PORT) --subdomain $(TEST_SUBDOMAIN) --api-key $$API_KEY --server ws://localhost:$(WS_PORT)
+	.build/release/cok --port $(LOCAL_PORT) --subdomain $(TEST_SUBDOMAIN) --api-key $$API_KEY --server localhost:$(TCP_PORT)
 
 test-site: ## Start a simple HTTP server on port 3000 for testing
 	@echo "$(BLUE)Starting test HTTP server on port $(LOCAL_PORT)...$(NC)"
@@ -204,7 +204,7 @@ docker-run: docker-build ## Run server in Docker
 	@echo "$(BLUE)Starting server in Docker...$(NC)"
 	docker run --rm \
 		-p $(HTTP_PORT):8080 \
-		-p $(WS_PORT):5000 \
+		-p $(TCP_PORT):5000 \
 		-e API_KEY_SECRET=$(TEST_SECRET) \
 		-e BASE_DOMAIN=localhost \
 		cok-server:dev

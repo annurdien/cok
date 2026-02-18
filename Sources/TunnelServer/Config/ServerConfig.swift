@@ -3,7 +3,7 @@ import Foundation
 public struct ServerConfig: Sendable {
     public let host: String
     public let httpPort: Int
-    public let wsPort: Int
+    public let tcpPort: Int
     public let allowedHosts: Set<String>
     public let maxTunnels: Int
     public let apiKeySecret: String
@@ -13,7 +13,7 @@ public struct ServerConfig: Sendable {
     public init(
         host: String = "0.0.0.0",
         httpPort: Int = 8080,
-        wsPort: Int = 5000,
+        tcpPort: Int = 5000,
         allowedHosts: Set<String> = ["localhost"],
         maxTunnels: Int = 1000,
         apiKeySecret: String,
@@ -22,7 +22,7 @@ public struct ServerConfig: Sendable {
     ) {
         self.host = host
         self.httpPort = httpPort
-        self.wsPort = wsPort
+        self.tcpPort = tcpPort
         self.allowedHosts = allowedHosts
         self.maxTunnels = maxTunnels
         self.apiKeySecret = apiKeySecret
@@ -32,7 +32,7 @@ public struct ServerConfig: Sendable {
 
     public static func fromEnvironment() throws -> ServerConfig {
         let httpPort = Int(ProcessInfo.processInfo.environment["HTTP_PORT"] ?? "8080") ?? 8080
-        let wsPort = Int(ProcessInfo.processInfo.environment["WS_PORT"] ?? "5000") ?? 5000
+        let tcpPort = Int(ProcessInfo.processInfo.environment["TCP_PORT"] ?? "5000") ?? 5000
         let allowedHostsStr = ProcessInfo.processInfo.environment["ALLOWED_HOSTS"] ?? "localhost"
         let allowedHosts = Set(
             allowedHostsStr.split(separator: ",").map {
@@ -58,7 +58,7 @@ public struct ServerConfig: Sendable {
 
         return ServerConfig(
             httpPort: httpPort,
-            wsPort: wsPort,
+            tcpPort: tcpPort,
             allowedHosts: allowedHosts,
             maxTunnels: maxTunnels,
             apiKeySecret: apiKeySecret,

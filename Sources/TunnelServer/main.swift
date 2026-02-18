@@ -21,7 +21,7 @@ logger.info(
     "Starting Cok Server",
     metadata: [
         "httpPort": "\(config.httpPort)",
-        "wsPort": "\(config.wsPort)",
+        "tcpPort": "\(config.tcpPort)",
     ])
 
 let connectionManager = ConnectionManager(maxConnections: config.maxTunnels, logger: logger)

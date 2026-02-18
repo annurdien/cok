@@ -2,7 +2,7 @@
 
 ## Overview
 
-Cok is a high-performance WebSocket-based tunneling system that exposes local services to the internet through secure tunnels.
+Cok is a high-performance TCP-based tunneling system that exposes local services to the internet through secure tunnels.
 
 ## Components
 
@@ -57,7 +57,7 @@ swift build -c release
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `COK_HTTP_PORT` | 8080 | HTTP server port for tunnel traffic |
-| `COK_WS_PORT` | 8081 | WebSocket port for tunnel connections |
+| `COK_TCP_PORT | 5000 | TCP port for tunnel connections |
 | `COK_DOMAIN` | localhost | Base domain for subdomains |
 | `COK_MAX_TUNNELS` | 1000 | Maximum concurrent tunnels |
 | `COK_API_KEY_SECRET` | (required) | Secret for API key validation |
@@ -66,7 +66,7 @@ swift build -c release
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `COK_SERVER_URL` | ws://localhost:8081 | WebSocket server URL |
+| `COK_SERVER_URL` | localhost:5000 | TCP server address |
 | `COK_LOCAL_PORT` | 3000 | Local port to forward traffic to |
 | `COK_SUBDOMAIN` | (auto) | Requested subdomain |
 | `COK_API_KEY` | (required) | API key for authentication |
@@ -83,7 +83,7 @@ swift build -c release
 
 ### Networking
 
-- [ ] Configure reverse proxy (nginx/Caddy) with WebSocket support
+- [ ] Configure reverse proxy (nginx/Caddy) with TCP tunnel support
 - [ ] Set up DNS wildcard for subdomains (`*.tunnel.yourdomain.com`)
 - [ ] Configure connection timeouts appropriately
 
@@ -127,7 +127,7 @@ server {
     }
 }
 
-# WebSocket traffic
+# TCP tunnel traffic
 server {
     listen 443 ssl;
     server_name tunnel.yourdomain.com;
@@ -204,8 +204,8 @@ For Kubernetes, set `terminationGracePeriodSeconds: 45` to allow time for shutdo
 # Check if server is accepting connections
 curl -v http://localhost:8080/health
 
-# Test WebSocket connectivity
-wscat -c ws://localhost:8081
+# Test TCP tunnel connectivity
+wscat -c localhost:5000
 ```
 
 ### Performance Issues

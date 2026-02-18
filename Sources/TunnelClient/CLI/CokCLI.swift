@@ -36,7 +36,7 @@ struct CokCLI: AsyncParsableCommand {
         let resolvedSubdomain = subdomain ?? generateSubdomain()
         let resolvedApiKey = apiKey ?? ProcessInfo.processInfo.environment["COK_API_KEY"] ?? ""
         let resolvedServer =
-            server ?? ProcessInfo.processInfo.environment["COK_SERVER_URL"] ?? "ws://localhost:8081"
+            server ?? ProcessInfo.processInfo.environment["COK_SERVER_URL"] ?? "localhost:5000"
 
         let (serverHost, serverPort) = parseServerAddress(resolvedServer)
 

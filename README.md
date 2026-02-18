@@ -66,7 +66,7 @@ cok -p 8080 -s myapp
 | `--port` | `-p` | | Local port to forward (required) |
 | `--subdomain` | `-s` | `COK_SUBDOMAIN` | Custom subdomain (auto-generated if not set) |
 | `--api-key` | | `COK_API_KEY` | API key for authentication |
-| `--server` | | `COK_SERVER_URL` | Server URL (default: `ws://localhost:8081`) |
+| `--server` | | `COK_SERVER_URL` | Server URL (default: `localhost:5000`) |
 | `--host` | | | Local host (default: `127.0.0.1`) |
 | `--verbose` | `-v` | | Verbose output |
 
@@ -93,7 +93,7 @@ swift build -c release --product cok-server
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HTTP_PORT` | 8080 | HTTP server port for tunnel traffic |
-| `WS_PORT` | 8081 | WebSocket port for client connections |
+| `TCP_PORT | 5000 | TCP port for tunnel connections |
 | `BASE_DOMAIN` | localhost | Base domain for subdomains |
 | `MAX_TUNNELS` | 1000 | Maximum concurrent tunnels |
 | `API_KEY_SECRET` | (required) | Secret for API key HMAC validation |
@@ -113,7 +113,7 @@ server {
     }
 }
 
-# WebSocket for clients  
+# TCP for tunnel clients  
 server {
     listen 443 ssl;
     server_name tunnel.yourdomain.com;

@@ -7,7 +7,7 @@ services:
       - "5000:5000"
     environment:
       - HTTP_PORT=8080
-      - WS_PORT=5000
+      - TCP_PORT=5000
       - BASE_DOMAIN=${BASE_DOMAIN:-localhost}
       - MAX_TUNNELS=${MAX_TUNNELS:-1000}
       - API_KEY_SECRET=${API_KEY_SECRET:?API_KEY_SECRET is required}

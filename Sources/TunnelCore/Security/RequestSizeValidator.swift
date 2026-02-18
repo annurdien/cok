@@ -5,7 +5,7 @@ public struct RequestSizeValidator: Sendable {
 
     public static let maxHeadersSize = 16 * 1024
     public static let maxBodySize = 10 * 1024 * 1024
-    public static let maxWebSocketFrameSize = 1 * 1024 * 1024
+    public static let maxFrameSize = 1 * 1024 * 1024
     public static let maxHeaderCount = 100
     public static let maxHeaderValueLength = 8 * 1024
     public static let maxPathLength = 2 * 1024
@@ -46,8 +46,8 @@ public struct RequestSizeValidator: Sendable {
     }
 
     public static func validateFrameSize(_ size: Int) throws {
-        guard size <= maxWebSocketFrameSize else {
-            throw ValidationError.frameTooLarge(size: size, maximum: maxWebSocketFrameSize)
+        guard size <= maxFrameSize else {
+            throw ValidationError.frameTooLarge(size: size, maximum: maxFrameSize)
         }
     }
 

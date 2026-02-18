@@ -4,7 +4,7 @@ Version: 1.0
 
 ## Overview
 
-Cok uses a custom binary protocol for communication between client and server over WebSocket. The protocol provides:
+Cok uses a custom binary protocol for communication between client and server over TCP. The protocol provides:
 - Version negotiation
 - Type-safe message passing
 - Error detection (CRC32)

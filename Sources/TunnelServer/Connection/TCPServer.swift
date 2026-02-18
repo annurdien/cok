@@ -53,9 +53,9 @@ final class TCPServer: Sendable {
             }
             .childChannelOption(ChannelOptions.socketOption(.so_keepalive), value: 1)
 
-        let channel = try await bootstrap.bind(host: config.host, port: config.wsPort).get()
+        let channel = try await bootstrap.bind(host: config.host, port: config.tcpPort).get()
 
-        logger.info("TCP Server started on \(config.host):\(config.wsPort)")
+        logger.info("TCP Server started on \(config.host):\(config.tcpPort)")
 
         try await channel.closeFuture.get()
     }

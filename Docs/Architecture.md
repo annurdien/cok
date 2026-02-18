@@ -2,10 +2,10 @@
 
 ## System Overview
 
-Cok is a tunnel server system that allows developers to expose local services to the internet through WebSocket-based tunnels.
+Cok is a tunnel server system that allows developers to expose local services to the internet through TCP tunnel-based tunnels.
 
 ```
-┌─────────────┐    HTTPS     ┌─────────────────┐    WebSocket    ┌─────────────┐
+┌─────────────┐    HTTPS     ┌─────────────────┐    TCP tunnel    ┌─────────────┐
 │   Browser   │ ───────────> │    cok-server   │ <───────────────│ cok-client  │
 │             │              │                 │                 │             │
 └─────────────┘              │  ┌───────────┐  │                 │ ┌─────────┐ │
@@ -22,7 +22,7 @@ Cok is a tunnel server system that allows developers to expose local services to
                              │  └─────┬─────┘  │
                              │        │        │
                              │  ┌─────▼─────┐  │
-                             │  │ WebSocket │  │
+                             │  │ TCP tunnel │  │
                              │  │  Server   │  │
                              │  └───────────┘  │
                              └─────────────────┘
@@ -45,7 +45,7 @@ The foundation layer providing:
 Production server with:
 
 - **HTTPServer**: Handles incoming HTTP traffic
-- **WebSocketServer**: Manages tunnel connections
+- **TCP tunnelServer**: Manages tunnel connections
 - **ConnectionManager**: Routes requests to tunnels
 - **AuthService**: Validates API keys
 - **RateLimiter**: Token bucket rate limiting
@@ -54,7 +54,7 @@ Production server with:
 
 CLI tool providing:
 
-- **WebSocket connection** to server
+- **TCP tunnel connection** to server
 - **Local HTTP proxy** forwarding
 - **Auto-reconnection** logic
 - **Subdomain management**
@@ -90,14 +90,14 @@ CLI tool providing:
 3. Router extracts subdomain `myapp`
 4. ConnectionManager finds tunnel for subdomain
 5. Request encoded as ProtocolFrame
-6. Frame sent over WebSocket to client
+6. Frame sent over TCP tunnel to client
 7. Client decodes frame
 8. Local proxy forwards to `localhost:3000`
 9. Response flows back through same path
 
 ### Connection Establishment
 
-1. Client connects to WebSocket endpoint
+1. Client connects to TCP tunnel endpoint
 2. Client sends Connect message with subdomain + API key
 3. Server validates credentials
 4. Server registers tunnel in ConnectionManager
