@@ -75,7 +75,7 @@ public actor LocalRequestHandler {
             ]
         )
 
-        guard await circuitBreaker.canAttempt() else {
+        guard await circuitBreaker.tryAcquire() else {
             logger.warning(
                 "Circuit breaker open, returning 503 for request \(safeRequestID.prefix(8))")
             try await sendErrorResponse(

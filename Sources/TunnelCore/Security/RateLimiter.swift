@@ -40,6 +40,8 @@ public actor RateLimiter {
 
     public func tryConsume(identifier: String) -> Bool {
         refillBucket(for: identifier)
+        performCleanupIfNeeded()
+
         var bucket = buckets[identifier] ?? Bucket(capacity: config.capacity)
         let cost = Double(config.costPerRequest)
 
@@ -50,7 +52,6 @@ public actor RateLimiter {
 
         bucket.tokens -= cost
         buckets[identifier] = bucket
-        performCleanupIfNeeded()
         return true
     }
 
@@ -91,7 +92,9 @@ public actor RateLimiter {
         let now = Date()
         guard now.timeIntervalSince(lastCleanup) >= cleanupInterval else { return }
         let cutoff = now.addingTimeInterval(-cleanupInterval)
-        buckets = buckets.filter { $0.value.lastRefill >= cutoff || $0.value.tokens < Double(config.capacity) }
+        buckets = buckets.filter {
+            $0.value.lastRefill >= cutoff || $0.value.tokens < Double(config.capacity)
+        }
         lastCleanup = now
     }
 }

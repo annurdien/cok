@@ -214,14 +214,15 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
             let protocolRequest = converter.toProtocolMessage(
                 head: head, body: body, remoteAddress: remoteAddress)
 
-            let responsePromise = Task {
-                try await requestTracker.track(requestID: protocolRequest.requestID)
-            }
+            // Start tracking before sending so the response can't arrive before
+            // we're listening. async let suspends lazily — the actual await happens
+            // after sendRequest, which is the correct ordering.
+            async let trackedResponse = requestTracker.track(requestID: protocolRequest.requestID)
 
             try await connectionManager.sendRequest(
                 tunnelID: tunnel.id, request: protocolRequest)
 
-            let response = try await responsePromise.value
+            let response = try await trackedResponse
 
             let (responseHead, responseBody) = converter.toHTTPResponse(message: response)
 
@@ -286,11 +287,17 @@ final class HTTPRequestHandler: ChannelInboundHandler, @unchecked Sendable {
         }
     }
 
+    /// Extracts the subdomain from a `Host` header value, validating that the
+    /// host ends with `.{baseDomain}`. Returns `nil` for any host that doesn't
+    /// match, preventing arbitrary `Host` headers from triggering tunnel lookups.
     private func extractSubdomain(from host: String) -> String? {
-        guard let firstComponent = host.split(separator: ".").first else {
-            return nil
-        }
-        return String(firstComponent)
+        // Strip port if present (e.g. "foo.example.com:8080" → "foo.example.com")
+        let hostWithoutPort =
+            host.split(separator: ":", maxSplits: 1).first.map(String.init) ?? host
+        let suffix = ".\(config.baseDomain)"
+        guard hostWithoutPort.hasSuffix(suffix) else { return nil }
+        let subdomain = String(hostWithoutPort.dropLast(suffix.count))
+        return subdomain.isEmpty ? nil : subdomain
     }
 
     private func sendResponse(

@@ -8,7 +8,7 @@ final class CircuitBreakerTests: XCTestCase {
             timeout: 1.0
         )
 
-        let result = await breaker.canAttempt()
+        let result = await breaker.tryAcquire()
         XCTAssertTrue(result)
     }
 
@@ -19,15 +19,15 @@ final class CircuitBreakerTests: XCTestCase {
         )
 
         await breaker.recordFailure()
-        var canAttempt = await breaker.canAttempt()
+        var canAttempt = await breaker.tryAcquire()
         XCTAssertTrue(canAttempt)
 
         await breaker.recordFailure()
-        canAttempt = await breaker.canAttempt()
+        canAttempt = await breaker.tryAcquire()
         XCTAssertTrue(canAttempt)
 
         await breaker.recordFailure()
-        canAttempt = await breaker.canAttempt()
+        canAttempt = await breaker.tryAcquire()
         XCTAssertFalse(canAttempt)
     }
 
@@ -43,11 +43,11 @@ final class CircuitBreakerTests: XCTestCase {
         await breaker.recordSuccess()
 
         await breaker.recordFailure()
-        var canAttempt = await breaker.canAttempt()
+        var canAttempt = await breaker.tryAcquire()
         XCTAssertTrue(canAttempt)
 
         await breaker.recordFailure()
-        canAttempt = await breaker.canAttempt()
+        canAttempt = await breaker.tryAcquire()
         XCTAssertTrue(canAttempt)
     }
 
@@ -60,12 +60,12 @@ final class CircuitBreakerTests: XCTestCase {
         await breaker.recordFailure()
         await breaker.recordFailure()
 
-        var canAttempt = await breaker.canAttempt()
+        var canAttempt = await breaker.tryAcquire()
         XCTAssertFalse(canAttempt)
 
         try? await Task.sleep(for: .seconds(0.2))
 
-        canAttempt = await breaker.canAttempt()
+        canAttempt = await breaker.tryAcquire()
         XCTAssertTrue(canAttempt)
     }
 
@@ -80,11 +80,11 @@ final class CircuitBreakerTests: XCTestCase {
 
         try? await Task.sleep(for: .seconds(0.2))
 
-        var canAttempt = await breaker.canAttempt()
+        var canAttempt = await breaker.tryAcquire()
         XCTAssertTrue(canAttempt)
 
         await breaker.recordSuccess()
-        canAttempt = await breaker.canAttempt()
+        canAttempt = await breaker.tryAcquire()
         XCTAssertTrue(canAttempt)
     }
 
@@ -99,12 +99,12 @@ final class CircuitBreakerTests: XCTestCase {
 
         try? await Task.sleep(for: .seconds(0.2))
 
-        var canAttempt = await breaker.canAttempt()
+        var canAttempt = await breaker.tryAcquire()
         XCTAssertTrue(canAttempt)
 
         await breaker.recordFailure()
 
-        canAttempt = await breaker.canAttempt()
+        canAttempt = await breaker.tryAcquire()
         XCTAssertFalse(canAttempt)
     }
 
@@ -129,12 +129,12 @@ final class CircuitBreakerTests: XCTestCase {
 
             for _ in 0..<10 {
                 group.addTask {
-                    _ = await breaker.canAttempt()
+                    _ = await breaker.tryAcquire()
                 }
             }
         }
 
-        let canAttempt = await breaker.canAttempt()
+        let canAttempt = await breaker.tryAcquire()
         XCTAssertTrue(canAttempt)
     }
 }

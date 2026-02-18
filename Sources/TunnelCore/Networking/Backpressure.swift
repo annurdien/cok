@@ -1,5 +1,5 @@
-import NIOCore
 import Foundation
+import NIOCore
 
 public actor BackpressureController {
     public enum State: Sendable {
@@ -13,7 +13,9 @@ public actor BackpressureController {
         public let highWatermark: Int
         public let criticalWatermark: Int
 
-        public init(lowWatermark: Int = 1000, highWatermark: Int = 5000, criticalWatermark: Int = 10000) {
+        public init(
+            lowWatermark: Int = 1000, highWatermark: Int = 5000, criticalWatermark: Int = 10000
+        ) {
             self.lowWatermark = lowWatermark
             self.highWatermark = highWatermark
             self.criticalWatermark = criticalWatermark
@@ -67,7 +69,9 @@ public actor BackpressureController {
     }
 
     private func calculateDelay() -> TimeInterval {
-        let ratio = Double(pendingRequests - config.lowWatermark) / Double(config.highWatermark - config.lowWatermark)
+        let ratio =
+            Double(pendingRequests - config.lowWatermark)
+            / Double(config.highWatermark - config.lowWatermark)
         return min(ratio * 0.5, 2.0)
     }
 }
@@ -80,8 +84,8 @@ public final class ChannelBackpressureHandler: ChannelDuplexHandler, @unchecked 
 
     private let highWatermark: Int
     private let lowWatermark: Int
-    private var bufferedBytes: Int = 0
-    private var isWritable: Bool = true
+    private var inboundBufferedBytes: Int = 0
+    private var readsSuspended: Bool = false
 
     public init(lowWatermark: Int = 32 * 1024, highWatermark: Int = 64 * 1024) {
         self.lowWatermark = lowWatermark
@@ -90,31 +94,44 @@ public final class ChannelBackpressureHandler: ChannelDuplexHandler, @unchecked 
 
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let buffer = unwrapInboundIn(data)
-        bufferedBytes += buffer.readableBytes
+        inboundBufferedBytes += buffer.readableBytes
 
-        if bufferedBytes >= highWatermark && isWritable {
-            isWritable = false
+        if inboundBufferedBytes >= highWatermark && !readsSuspended {
+            readsSuspended = true
             context.channel.setOption(ChannelOptions.autoRead, value: false).whenComplete { _ in }
         }
 
         context.fireChannelRead(wrapInboundOut(buffer))
     }
 
-    public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
-        let buffer = unwrapOutboundIn(data)
-        bufferedBytes = max(0, bufferedBytes - buffer.readableBytes)
-
-        if bufferedBytes < lowWatermark && !isWritable {
-            isWritable = true
-            context.channel.setOption(ChannelOptions.autoRead, value: true).whenComplete { _ in }
-        }
-
-        context.write(wrapOutboundOut(buffer), promise: promise)
-    }
-
     public func channelReadComplete(context: ChannelHandlerContext) {
         context.fireChannelReadComplete()
     }
+
+    public func triggerUserOutboundEvent(
+        context: ChannelHandlerContext, event: Any, promise: EventLoopPromise<Void>?
+    ) {
+        if let consumed = event as? BytesConsumedEvent {
+            inboundBufferedBytes = max(0, inboundBufferedBytes - consumed.bytes)
+            if inboundBufferedBytes < lowWatermark && readsSuspended {
+                readsSuspended = false
+                context.channel.setOption(ChannelOptions.autoRead, value: true).whenComplete { _ in
+                }
+            }
+        }
+        context.triggerUserOutboundEvent(event, promise: promise)
+    }
+
+    public func write(
+        context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?
+    ) {
+        context.write(wrapOutboundOut(unwrapOutboundIn(data)), promise: promise)
+    }
+}
+
+public struct BytesConsumedEvent: Sendable {
+    public let bytes: Int
+    public init(bytes: Int) { self.bytes = bytes }
 }
 
 public actor MemoryPressureMonitor {

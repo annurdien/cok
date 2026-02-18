@@ -23,7 +23,7 @@ public struct TunnelConnection: Sendable {
 }
 
 public actor ConnectionManager {
-    private var tunnels: [String: TunnelConnection] = [:]
+    private var tunnels: [UUID: TunnelConnection] = [:]
     private var subdomainToTunnel: [String: UUID] = [:]
     private let maxConnections: Int
     private let logger: Logger
@@ -52,18 +52,16 @@ public actor ConnectionManager {
             throw ServerError.subdomainTaken
         }
 
-        let tunnel = TunnelConnection(
-            subdomain: subdomain, apiKey: apiKey, channel: channel)
-        tunnels[tunnel.id.uuidString] = tunnel
+        let tunnel = TunnelConnection(subdomain: subdomain, apiKey: apiKey, channel: channel)
+        tunnels[tunnel.id] = tunnel
         subdomainToTunnel[subdomain] = tunnel.id
 
         let safeSubdomain = (try? InputSanitizer.sanitizeString(subdomain)) ?? "invalid-subdomain"
-        let safeTunnelID = (try? InputSanitizer.sanitizeString(tunnel.id.uuidString)) ?? "unknown"
 
         logger.info(
             "Tunnel registered",
             metadata: [
-                "tunnelID": "\(safeTunnelID.prefix(8))",
+                "tunnelID": "\(tunnel.id.uuidString.prefix(8))",
                 "subdomain": "\(safeSubdomain)",
             ])
 
@@ -71,7 +69,7 @@ public actor ConnectionManager {
     }
 
     public func sendRequest(tunnelID: UUID, request: HTTPRequestMessage) async throws {
-        guard let tunnel = tunnels[tunnelID.uuidString] else {
+        guard let tunnel = tunnels[tunnelID] else {
             throw TunnelError.server(
                 .tunnelNotFound(tunnelID),
                 context: ErrorContext(
@@ -88,58 +86,47 @@ public actor ConnectionManager {
             payload: payload
         )
 
-        // If ProtocolFrameEncoder is in the pipeline, we can write the frame directly.
-        // Assuming TCPServer sets up ProtocolFrameEncoder.
         try await tunnel.channel.writeAndFlush(frame).get()
-
-        let safeTunnelID = (try? InputSanitizer.sanitizeString(tunnelID.uuidString)) ?? "unknown"
-        let safeRequestID =
-            (try? InputSanitizer.sanitizeString(request.requestID.uuidString)) ?? "unknown"
 
         logger.debug(
             "Sent request to tunnel",
             metadata: [
-                "tunnelID": "\(safeTunnelID.prefix(8))",
-                "requestID": "\(safeRequestID.prefix(8))",
+                "tunnelID": "\(tunnelID.uuidString.prefix(8))",
+                "requestID": "\(request.requestID.uuidString.prefix(8))",
             ])
     }
 
     public func unregisterTunnel(id: UUID) {
-        guard let tunnel = tunnels.removeValue(forKey: id.uuidString) else {
-            return
-        }
+        guard let tunnel = tunnels.removeValue(forKey: id) else { return }
 
         subdomainToTunnel.removeValue(forKey: tunnel.subdomain)
 
-        let safeTunnelID = (try? InputSanitizer.sanitizeString(id.uuidString)) ?? "unknown"
         let safeSubdomain =
             (try? InputSanitizer.sanitizeString(tunnel.subdomain)) ?? "invalid-subdomain"
 
         logger.info(
             "Tunnel unregistered",
             metadata: [
-                "tunnelID": "\(safeTunnelID.prefix(8))",
+                "tunnelID": "\(id.uuidString.prefix(8))",
                 "subdomain": "\(safeSubdomain)",
             ])
     }
 
     public func getTunnel(forSubdomain subdomain: String) -> TunnelConnection? {
-        guard let tunnelID = subdomainToTunnel[subdomain] else {
-            return nil
-        }
-        return tunnels[tunnelID.uuidString]
+        guard let tunnelID = subdomainToTunnel[subdomain] else { return nil }
+        return tunnels[tunnelID]
     }
 
     public func getTunnel(byID id: UUID) -> TunnelConnection? {
-        return tunnels[id.uuidString]
+        tunnels[id]
     }
 
     public func listTunnels() -> [TunnelConnection] {
-        return Array(tunnels.values)
+        Array(tunnels.values)
     }
 
     public func connectionCount() -> Int {
-        return tunnels.count
+        tunnels.count
     }
 
     public func disconnectAll() async {

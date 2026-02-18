@@ -102,5 +102,14 @@ try await withThrowingTaskGroup(of: Void.self) { group in
         try await tcpServer.start()
     }
 
-    try await group.next()
+    do {
+        try await group.next()
+    } catch {
+        logger.error("Server exited with error", metadata: ["error": "\(error)"])
+        group.cancelAll()
+        try? await group.waitForAll()
+        throw error
+    }
+    group.cancelAll()
+    try? await group.waitForAll()
 }
