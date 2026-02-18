@@ -18,6 +18,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache Homebrew packages
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: homebrew-swiftlint-${{ hashFiles('.swiftlint.yml') }}
+          restore-keys: homebrew-swiftlint-
+
       - name: Install SwiftLint
         run: brew install swiftlint
 
@@ -60,7 +67,9 @@ jobs:
       - name: Cache Swift packages
         uses: actions/cache@v4
         with:
-          path: .build
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
           key: ${{ runner.os }}-swift-${{ hashFiles('Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-swift-
@@ -110,6 +119,15 @@ jobs:
 
       - name: Select Xcode 26.2
         run: sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-swift-benchmarks-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-benchmarks-
+            ${{ runner.os }}-swift-
 
       - name: Build Benchmarks
         run: swift build -c release --product Benchmarks
