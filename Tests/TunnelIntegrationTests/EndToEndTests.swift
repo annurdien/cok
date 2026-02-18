@@ -73,9 +73,12 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
             remoteAddress: "192.168.1.1"
         )
 
-        let responseTask = Task {
-            try await requestTracker.track(requestID: requestID)
-        }
+        // Use async let so track() and the send+complete run concurrently.
+        // async let guarantees track() starts suspending before the child task proceeds.
+        async let responseResult = requestTracker.track(requestID: requestID)
+
+        // Yield once to let the async let task register the continuation in RequestTracker.
+        await Task.yield()
 
         try await connectionManager.sendRequest(tunnelID: tunnel.id, request: request)
 
@@ -97,7 +100,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
 
         await requestTracker.complete(requestID: requestID, response: response)
 
-        let result = try await responseTask.value
+        let result = try await responseResult
         XCTAssertEqual(result.statusCode, 201)
 
         try? await channel.close()
