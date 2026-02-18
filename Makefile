@@ -1,210 +1,217 @@
-# Cok Development Makefile
-# Easy testing and development commands
+# =============================================================================
+# Cok — Development Makefile
+# =============================================================================
 
-# Configuration
-TEST_SECRET = test-secret-key-minimum-32-characters
-TEST_SUBDOMAIN = test-client
-LOCAL_PORT = 3000
-HTTP_PORT = 8080
-TCP_PORT = 5000
+.DEFAULT_GOAL := help
 
-# Generate API key from test credentials (cached)
-TEST_API_KEY := $(shell swift Scripts/generate-api-key.swift $(TEST_SUBDOMAIN) $(TEST_SECRET) 2>&1 | grep -Eo '[0-9a-f]{64}' | head -1)
+# -----------------------------------------------------------------------------
+# Configuration (override via environment or command line, e.g. HTTP_PORT=9090)
+# -----------------------------------------------------------------------------
+TEST_SECRET    ?= test-secret-key-minimum-32-characters
+TEST_SUBDOMAIN ?= test-client
+LOCAL_PORT     ?= 3000
+HTTP_PORT      ?= 8080
+TCP_PORT       ?= 5000
 
-# Colors for output
-BLUE = \033[34m
-GREEN = \033[32m
-YELLOW = \033[33m
-RED = \033[31m
-NC = \033[0m # No Color
+BINARY_DIR      := .build/release
+SERVER_BIN      := $(BINARY_DIR)/cok-server
+CLIENT_BIN      := $(BINARY_DIR)/cok
+API_KEY_FILE    := .api_key.tmp
+PID_FILE        := .server.pid
+TEST_SITE_DIR   := .test-site
+IMAGE_TAG       ?= cok-server:dev
 
-.PHONY: help build make-server make-client server client test-server test-client generate-key test-site clean all
+# Script to generate an API key — extracted to avoid running at parse time
+GENERATE_KEY_CMD = swift Scripts/generate-api-key.swift $(TEST_SUBDOMAIN) $(TEST_SECRET) 2>&1 \
+                   | grep -Eo '[0-9a-f]{64}' | head -1
 
-help: ## Show this help message
-	@echo "$(BLUE)Cok Development Commands:$(NC)"
-	@echo ""
-	@awk 'BEGIN {FS = ":.*##"}; /^[a-zA-Z_-]+:.*##/ { printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
-	@echo ""
-	@echo "$(YELLOW)Quick Start:$(NC)"
-	@echo "  make make-server  # Start server with test credentials"
-	@echo "  make make-client  # In another terminal, connect matching client"
+# Terminal colors (gracefully degrade if tput unavailable)
+BOLD  := $(shell tput bold 2>/dev/null)
+BLUE  := $(shell tput setaf 4 2>/dev/null)
+GREEN := $(shell tput setaf 2 2>/dev/null)
+YELLOW:= $(shell tput setaf 3 2>/dev/null)
+RED   := $(shell tput setaf 1 2>/dev/null)
+RESET := $(shell tput sgr0 2>/dev/null)
 
-build: ## Build both server and client
-	@echo "$(BLUE)Building Cok binaries...$(NC)"
+# Helpers
+_banner = @printf '$(BLUE)%s$(RESET)\n' '══════════════════════════════════════'
+_ok     = @printf '$(GREEN)✓ %s$(RESET)\n'
+_info   = @printf '$(YELLOW)  %s$(RESET)\n'
+
+# Server environment block (re-used by multiple targets)
+define SERVER_ENV
+HTTP_PORT=$(HTTP_PORT) \
+TCP_PORT=$(TCP_PORT) \
+BASE_DOMAIN=localhost \
+API_KEY_SECRET=$(TEST_SECRET) \
+MAX_TUNNELS=10
+endef
+
+# =============================================================================
+# Phony targets
+# =============================================================================
+.PHONY: help \
+        build build-server build-client \
+        test unit-test \
+        server client generate-key \
+        server-bg server-stop status \
+        dev test-site \
+        docker-build docker-run \
+        clean
+
+# =============================================================================
+# Help
+# =============================================================================
+help: ## Show this help
+	@printf '$(BOLD)$(BLUE)Cok Development Commands$(RESET)\n\n'
+	@awk 'BEGIN { FS = ":.*##" } \
+	      /^[a-zA-Z_-]+:.*##/ { \
+	          printf "  $(GREEN)%-18s$(RESET) %s\n", $$1, $$2 \
+	      } \
+	      /^##@/ { \
+	          printf "\n$(BOLD)%s$(RESET)\n", substr($$0, 5) \
+	      }' $(MAKEFILE_LIST)
+	@printf '\n$(YELLOW)Override variables:$(RESET)  HTTP_PORT=8080  TCP_PORT=5000  LOCAL_PORT=3000\n\n'
+
+# =============================================================================
+##@ Build
+# =============================================================================
+build: build-server build-client ## Build both binaries (release)
+
+build-server: ## Build cok-server (release)
+	@printf '$(BLUE)Building cok-server...$(RESET)\n'
 	@swift build -c release --product cok-server
+	$(_ok) "cok-server built → $(SERVER_BIN)"
+
+build-client: ## Build cok client (release)
+	@printf '$(BLUE)Building cok...$(RESET)\n'
 	@swift build -c release --product cok
-	@echo "$(GREEN)✓ Build complete$(NC)"
+	$(_ok) "cok built → $(CLIENT_BIN)"
 
+# =============================================================================
+##@ Test
+# =============================================================================
 unit-test: ## Run unit tests
-	@echo "$(BLUE)Running unit tests...$(NC)"
-	@swift test
-	@echo "$(GREEN)✓ Tests passed$(NC)"
+	@printf '$(BLUE)Running tests...$(RESET)\n'
+	@swift test --parallel
+	$(_ok) "All tests passed"
 
-make-server: build ## Run test server with predefined auth key
-	@rm -f .api_key.tmp
-	@echo "$(BLUE)═══════════════════════════════════════$(NC)"
-	@echo "$(BLUE)  Starting Cok Test Server$(NC)"
-	@echo "$(BLUE)═══════════════════════════════════════$(NC)"
-	@echo "$(GREEN)HTTP Server:$(NC)  http://localhost:$(HTTP_PORT)"
-	@echo "$(GREEN)TCP Port:$(NC)    localhost:$(TCP_PORT)"
-	@echo "$(GREEN)Base Domain:$(NC)  localhost"
-	@echo "$(GREEN)API Secret:$(NC)   $(TEST_SECRET)"
-	@echo "$(YELLOW)Generating test API key for subdomain: $(TEST_SUBDOMAIN)$(NC)"
-	@echo "$(BLUE)═══════════════════════════════════════$(NC)"
-	@echo ""
-	@HTTP_PORT=$(HTTP_PORT) \
-	TCP_PORT=$(TCP_PORT) \
-	BASE_DOMAIN=localhost \
-	API_KEY_SECRET=$(TEST_SECRET) \
-	TEST_SUBDOMAIN=$(TEST_SUBDOMAIN) \
-	MAX_TUNNELS=10 \
-	.build/release/cok-server
+test: unit-test ## Alias for unit-test
 
-make-client: build ## Run test client matching server credentials
-	@if [ ! -f .api_key.tmp ]; then \
-		echo "$(RED)Error: API key not found. Run 'make make-server' first.$(NC)"; \
-		exit 1; \
+# =============================================================================
+##@ Development
+# =============================================================================
+generate-key: ## Generate a test API key and cache it in $(API_KEY_FILE)
+	@printf '$(BLUE)Generating API key for subdomain "$(TEST_SUBDOMAIN)"...$(RESET)\n'
+	@API_KEY=$$($(GENERATE_KEY_CMD)); \
+	if [ -z "$$API_KEY" ]; then \
+		printf '$(RED)Error: key generation failed$(RESET)\n'; exit 1; \
+	fi; \
+	printf '%s' "$$API_KEY" > $(API_KEY_FILE); \
+	printf '$(GREEN)✓ API key: %s$(RESET)\n' "$$API_KEY"
+
+# Internal: ensure a key exists (generate only if not cached)
+$(API_KEY_FILE):
+	@$(MAKE) --no-print-directory generate-key
+
+server: build-server ## Start the development server (foreground)
+	$(_banner)
+	@printf '$(BLUE)  cok-server$(RESET)\n'
+	$(_banner)
+	$(_info) "HTTP → http://localhost:$(HTTP_PORT)"
+	$(_info) "TCP  → localhost:$(TCP_PORT)"
+	$(_info) "Secret: $(TEST_SECRET)"
+	@printf '\n'
+	@$(SERVER_ENV) $(SERVER_BIN)
+
+server-bg: build-server ## Start the server in the background; PID saved to $(PID_FILE)
+	@printf '$(BLUE)Starting server in background...$(RESET)\n'
+	@$(SERVER_ENV) $(SERVER_BIN) & echo $$! > $(PID_FILE)
+	@sleep 2
+	@if [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
+		printf '$(GREEN)✓ Server started (PID %s)$(RESET)\n' "$$(cat $(PID_FILE))"; \
+		printf '$(YELLOW)  Stop with: make server-stop$(RESET)\n'; \
+	else \
+		printf '$(RED)✗ Server failed to start$(RESET)\n'; exit 1; \
 	fi
-	@API_KEY=$$(cat .api_key.tmp); \
-	echo "$(BLUE)═══════════════════════════════════════$(NC)"; \
-	echo "$(BLUE)  Starting Cok Test Client$(NC)"; \
-	echo "$(BLUE)═══════════════════════════════════════$(NC)"; \
-	echo "$(GREEN)Server:$(NC)       localhost:$(TCP_PORT)"; \
-	echo "$(GREEN)Subdomain:$(NC)    $(TEST_SUBDOMAIN)"; \
-	echo "$(GREEN)Local Port:$(NC)   $(LOCAL_PORT)"; \
-	echo "$(GREEN)Public URL:$(NC)   http://$(TEST_SUBDOMAIN).localhost:$(HTTP_PORT)"; \
-	echo "$(YELLOW)API Key:$(NC)      $$API_KEY"; \
-	echo "$(BLUE)═══════════════════════════════════════$(NC)"; \
-	echo ""; \
-	.build/release/cok \
+
+server-stop: ## Stop background server
+	@if [ -f $(PID_FILE) ]; then \
+		PID=$$(cat $(PID_FILE)); \
+		kill "$$PID" 2>/dev/null && printf '$(GREEN)✓ Server stopped (PID %s)$(RESET)\n' "$$PID"; \
+		rm -f $(PID_FILE); \
+	else \
+		printf '$(YELLOW)No server PID file found$(RESET)\n'; \
+	fi
+
+client: build-client $(API_KEY_FILE) ## Connect client to local server
+	$(_banner)
+	@printf '$(BLUE)  cok client$(RESET)\n'
+	$(_banner)
+	$(_info) "Server:    localhost:$(TCP_PORT)"
+	$(_info) "Subdomain: $(TEST_SUBDOMAIN)"
+	$(_info) "Local:     http://localhost:$(LOCAL_PORT)"
+	$(_info) "Public:    http://$(TEST_SUBDOMAIN).localhost:$(HTTP_PORT)"
+	@printf '\n'
+	@$(CLIENT_BIN) \
 		--port $(LOCAL_PORT) \
 		--subdomain $(TEST_SUBDOMAIN) \
-		--api-key $$API_KEY \
+		--api-key $$(cat $(API_KEY_FILE)) \
 		--server localhost:$(TCP_PORT)
 
-server: build ## Build and start the development server
-	@echo "$(BLUE)Starting Cok server...$(NC)"
-	@echo "$(YELLOW)Server URL: localhost:$(TCP_PORT)$(NC)"
-	@echo "$(YELLOW)HTTP URL: http://localhost:$(HTTP_PORT)$(NC)"
-	@echo "$(YELLOW)API Secret: $(TEST_SECRET)$(NC)"
-	@echo ""
-	HTTP_PORT=$(HTTP_PORT) \
-	TCP_PORT=$(TCP_PORT) \
-	BASE_DOMAIN=localhost \
-	API_KEY_SECRET=$(TEST_SECRET) \
-	MAX_TUNNELS=10 \
-	.build/release/cok-server
+test-site: ## Serve a static test page on $(LOCAL_PORT) via python3
+	@printf '$(BLUE)Starting test HTTP server on port $(LOCAL_PORT)...$(RESET)\n'
+	@mkdir -p $(TEST_SITE_DIR)
+	@printf '<h1>Hello from Cok!</h1><p>Served via TCP tunnel. Time: %s</p>' \
+	    "$$(date)" > $(TEST_SITE_DIR)/index.html
+	$(_ok) "Test site → http://localhost:$(LOCAL_PORT)"
+	@cd $(TEST_SITE_DIR) && python3 -m http.server $(LOCAL_PORT)
 
-test-server: build ## Start server in background for testing
-	@echo "$(BLUE)Starting test server in background...$(NC)"
-	@HTTP_PORT=$(HTTP_PORT) \
-	TCP_PORT=$(TCP_PORT) \
-	BASE_DOMAIN=localhost \
-	API_KEY_SECRET=$(TEST_SECRET) \
-	MAX_TUNNELS=10 \
-	.build/release/cok-server &
-	@echo $$! > .server.pid
-	@sleep 2
-	@echo "$(GREEN)✓ Server started (PID: $$(cat .server.pid))$(NC)"
-	@echo "$(YELLOW)Use 'make stop-server' to stop it$(NC)"
+dev: ## Full dev workflow: start server in bg, print next steps
+	@$(MAKE) --no-print-directory server-bg
+	@$(MAKE) --no-print-directory generate-key
+	@printf '\n$(BOLD)Next steps:$(RESET)\n'
+	$(_info) "Terminal 2: make test-site"
+	$(_info) "Terminal 3: make client"
+	$(_info) "Browser:    http://$(TEST_SUBDOMAIN).localhost:$(HTTP_PORT)"
+	@printf '\n'
 
-stop-server: ## Stop background test server
-	@if [ -f .server.pid ]; then \
-		kill $$(cat .server.pid) 2>/dev/null || true; \
-		rm -f .server.pid; \
-		echo "$(GREEN)✓ Server stopped$(NC)"; \
+status: ## Show server and API key status
+	@printf '$(BLUE)Status$(RESET)\n'
+	@if [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
+		printf '$(GREEN)  Server  running (PID %s)$(RESET)\n' "$$(cat $(PID_FILE))"; \
 	else \
-		echo "$(YELLOW)No server PID found$(NC)"; \
+		printf '$(YELLOW)  Server  not running$(RESET)\n'; \
 	fi
-
-generate-key: ## Generate API key for testing
-	@echo "$(BLUE)Generating API key...$(NC)"
-	@API_KEY=$$(swift Scripts/generate-api-key.swift $(TEST_SUBDOMAIN) $(TEST_SECRET) 2>&1 | grep -Eo '[0-9a-f]{64}' | head -1); \
-	echo "$$API_KEY" > .api_key.tmp; \
-	echo "$(GREEN)Generated API key: $$API_KEY$(NC)"
-	@echo ""
-	@echo "$(YELLOW)Use this key with the client:$(NC)"
-	@echo "  cok --port $(LOCAL_PORT) --subdomain $(TEST_SUBDOMAIN) --api-key $$(cat .api_key.tmp) --server localhost:$(TCP_PORT)"
-
-client: build generate-key ## Connect client to local server
-	@echo "$(BLUE)Connecting client to server...$(NC)"
-	@if [ ! -f .api_key.tmp ]; then make generate-key; fi
-	@API_KEY=$$(cat .api_key.tmp); \
-	echo "$(YELLOW)Connecting with subdomain: $(TEST_SUBDOMAIN)$(NC)"; \
-	echo "$(YELLOW)Forwarding: http://$(TEST_SUBDOMAIN).localhost:$(HTTP_PORT) → http://localhost:$(LOCAL_PORT)$(NC)"; \
-	echo ""; \
-	.build/release/cok --port $(LOCAL_PORT) --subdomain $(TEST_SUBDOMAIN) --api-key $$API_KEY --server localhost:$(TCP_PORT)
-
-test-client: build ## Connect client (assumes server is already running)
-	@echo "$(BLUE)Connecting test client...$(NC)"
-	@if [ ! -f .api_key.tmp ]; then \
-		echo "$(YELLOW)Generating API key...$(NC)"; \
-		API_KEY=$$(swift Scripts/generate-api-key.swift $(TEST_SUBDOMAIN) $(TEST_SECRET) 2>&1 | grep -Eo '[0-9a-f]{64}' | head -1); \
-		echo "$$API_KEY" > .api_key.tmp; \
-	fi
-	@API_KEY=$$(cat .api_key.tmp); \
-	echo "$(YELLOW)Connecting to: localhost:$(TCP_PORT)$(NC)"; \
-	echo "$(YELLOW)Subdomain: $(TEST_SUBDOMAIN)$(NC)"; \
-	echo "$(YELLOW)Local port: $(LOCAL_PORT)$(NC)"; \
-	echo ""; \
-	.build/release/cok --port $(LOCAL_PORT) --subdomain $(TEST_SUBDOMAIN) --api-key $$API_KEY --server localhost:$(TCP_PORT)
-
-test-site: ## Start a simple HTTP server on port 3000 for testing
-	@echo "$(BLUE)Starting test HTTP server on port $(LOCAL_PORT)...$(NC)"
-	@mkdir -p test-site
-	@echo "<h1>Hello from Cok tunnel!</h1><p>This is served via the tunnel</p><p>Time: $$(date)</p>" > test-site/index.html
-	@echo "$(GREEN)✓ Test site created$(NC)"
-	@echo "$(YELLOW)Starting server on http://localhost:$(LOCAL_PORT)$(NC)"
-	@cd test-site && python3 -m http.server $(LOCAL_PORT)
-
-test: test-server generate-key ## Start everything for testing
-	@echo "$(GREEN)✓ Development environment ready!$(NC)"
-	@echo ""
-	@echo "$(YELLOW)Next steps:$(NC)"
-	@echo "1. Open a new terminal and run: make test-site"
-	@echo "2. Open another terminal and run: make test-client"
-	@echo "3. Visit: http://$(TEST_SUBDOMAIN).localhost:$(HTTP_PORT)"
-	@echo ""
-	@echo "$(YELLOW)API Key generated: $$(cat .api_key.tmp)$(NC)"
-
-all: build test ## Build and setup complete test environment
-	@echo "$(GREEN)🚀 Ready for testing!$(NC)"
-
-clean: ## Clean build artifacts and temp files
-	@echo "$(BLUE)Cleaning up...$(NC)"
-	@swift package clean
-	@rm -f .api_key.tmp .server.pid
-	@rm -rf test-site
-	@echo "$(GREEN)✓ Cleaned$(NC)"
-
-# Development helpers
-logs: ## Show recent server logs (if running)
-	@tail -f /dev/null  # This would need actual log file path
-
-status: ## Show running processes
-	@echo "$(BLUE)Checking status...$(NC)"
-	@if [ -f .server.pid ]; then \
-		echo "$(GREEN)Server running (PID: $$(cat .server.pid))$(NC)"; \
+	@if [ -f $(API_KEY_FILE) ]; then \
+		printf '$(GREEN)  API key %s$(RESET)\n' "$$(cat $(API_KEY_FILE))"; \
 	else \
-		echo "$(YELLOW)No server running$(NC)"; \
-	fi
-	@if [ -f .api_key.tmp ]; then \
-		echo "$(GREEN)API key available: $$(cat .api_key.tmp)$(NC)"; \
-	else \
-		echo "$(YELLOW)No API key generated$(NC)"; \
+		printf '$(YELLOW)  API key not generated$(RESET)\n'; \
 	fi
 
-# Docker helpers
-docker-build: ## Build Docker server image
-	@echo "$(BLUE)Building Docker image...$(NC)"
-	docker build -t cok-server:dev .
-	@echo "$(GREEN)✓ Docker image built$(NC)"
+# =============================================================================
+##@ Docker
+# =============================================================================
+docker-build: ## Build Docker server image (tag: $(IMAGE_TAG))
+	@printf '$(BLUE)Building Docker image $(IMAGE_TAG)...$(RESET)\n'
+	@docker build -t $(IMAGE_TAG) .
+	$(_ok) "Image built: $(IMAGE_TAG)"
 
-docker-run: docker-build ## Run server in Docker
-	@echo "$(BLUE)Starting server in Docker...$(NC)"
-	docker run --rm \
+docker-run: docker-build ## Build and run server image
+	@printf '$(BLUE)Running $(IMAGE_TAG)...$(RESET)\n'
+	@docker run --rm \
 		-p $(HTTP_PORT):8080 \
 		-p $(TCP_PORT):5000 \
 		-e API_KEY_SECRET=$(TEST_SECRET) \
 		-e BASE_DOMAIN=localhost \
-		cok-server:dev
+		$(IMAGE_TAG)
+
+# =============================================================================
+##@ Housekeeping
+# =============================================================================
+clean: server-stop ## Remove build artifacts, caches, and temp files
+	@printf '$(BLUE)Cleaning...$(RESET)\n'
+	@swift package clean
+	@rm -f $(API_KEY_FILE) $(PID_FILE)
+	@rm -rf $(TEST_SITE_DIR)
+	$(_ok) "Clean complete"
