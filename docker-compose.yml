@@ -2,16 +2,15 @@ services:
   server:
     build:
       context: .
-      target: server
     ports:
       - "8080:8080"
-      - "8081:8081"
+      - "5000:5000"
     environment:
       - HTTP_PORT=8080
-      - WS_PORT=8081
+      - WS_PORT=5000
       - BASE_DOMAIN=${BASE_DOMAIN:-localhost}
       - MAX_TUNNELS=${MAX_TUNNELS:-1000}
-      - API_KEY_SECRET=${API_KEY_SECRET:-change-me}
+      - API_KEY_SECRET=${API_KEY_SECRET:?API_KEY_SECRET is required}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -21,22 +20,6 @@ services:
       start_period: 5s
     networks:
       - cok-network
-
-  client:
-    build:
-      context: .
-      target: client
-    environment:
-      - COK_SERVER_URL=ws://server:8081
-      - COK_LOCAL_PORT=3000
-      - COK_SUBDOMAIN=${COK_SUBDOMAIN:-}
-      - COK_API_KEY=${COK_API_KEY:-}
-    depends_on:
-      server:
-        condition: service_healthy
-    network_mode: host
-    profiles:
-      - client
 
 networks:
   cok-network:

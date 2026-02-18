@@ -195,14 +195,16 @@ status: ## Show running processes
 	fi
 
 # Docker helpers
-docker-build: ## Build Docker image
+docker-build: ## Build Docker server image
 	@echo "$(BLUE)Building Docker image...$(NC)"
-	podman build -t localhost/cok-server:dev .
+	docker build -t cok-server:dev .
 	@echo "$(GREEN)✓ Docker image built$(NC)"
 
 docker-run: docker-build ## Run server in Docker
 	@echo "$(BLUE)Starting server in Docker...$(NC)"
-	podman run --rm -p $(HTTP_PORT):8080 -p $(WS_PORT):8081 \
+	docker run --rm \
+		-p $(HTTP_PORT):8080 \
+		-p $(WS_PORT):5000 \
 		-e API_KEY_SECRET=$(TEST_SECRET) \
 		-e BASE_DOMAIN=localhost \
-		localhost/cok-server:dev
+		cok-server:dev
