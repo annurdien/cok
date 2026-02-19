@@ -128,12 +128,18 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
             metadata: ["subdomain": "\(safeSubdomain)"])
 
         do {
-            guard let apiKey = await authService.validateAPIKey(request.apiKey) else {
+            let requestedSubdomain = request.requestedSubdomain ?? ""
+            guard
+                let apiKey = await authService.validateAPIKey(
+                    request.apiKey,
+                    subdomain: requestedSubdomain
+                )
+            else {
                 throw ClientError.authenticationFailed
             }
 
-            if let requested = request.requestedSubdomain, apiKey.subdomain != requested {
-                throw ClientError.invalidSubdomain(requested)
+            if !requestedSubdomain.isEmpty, apiKey.subdomain != requestedSubdomain {
+                throw ClientError.invalidSubdomain(requestedSubdomain)
             }
 
             let tunnel = try await connectionManager.registerTunnel(

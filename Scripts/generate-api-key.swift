@@ -11,12 +11,12 @@ struct APIKey {
     let subdomain: String
     let createdAt: Date
     let expiresAt: Date?
-    
+
     func printDetails() {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
-        
+
         print("📋 API Key Generated")
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("Subdomain:    \(subdomain)")
@@ -40,17 +40,17 @@ struct APIKey {
 }
 
 func generateAPIKey(subdomain: String, secret: String, expiresInHours: Double? = nil) -> APIKey {
-    // Use HMAC-SHA256 for API key generation (same as AuthService)
-    let timestamp = Date().timeIntervalSince1970
-    let message = "\(subdomain):\(UUID().uuidString):\(timestamp)"
+    // Deterministic HMAC-SHA256: HMAC(message: subdomain, key: secret)
+    // This matches AuthService.verifyStaticKey() on the server — no UUID or timestamp,
+    // so the same inputs always produce the same key and it survives server restarts.
     let signature = HMAC<SHA256>.authenticationCode(
-        for: Data(message.utf8),
+        for: Data(subdomain.utf8),
         using: SymmetricKey(data: Data(secret.utf8))
     )
     let keyString = signature.compactMap { String(format: "%02x", $0) }.joined()
-    
+
     let expiresAt = expiresInHours.map { Date().addingTimeInterval($0 * 3600) }
-    
+
     return APIKey(
         key: keyString,
         subdomain: subdomain,
