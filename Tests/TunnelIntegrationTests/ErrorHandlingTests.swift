@@ -52,7 +52,8 @@ final class ErrorHandlingTests: XCTestCase, @unchecked Sendable {
 
     func testInvalidAPIKey() async throws {
         let authService = AuthService(secret: "test-secret")
-        let result = await authService.validateAPIKey("invalid-key")
+        let result = await authService.validateAPIKey(
+            "invalid-key-that-is-not-valid-hex", subdomain: "test")
         XCTAssertNil(result)
     }
 

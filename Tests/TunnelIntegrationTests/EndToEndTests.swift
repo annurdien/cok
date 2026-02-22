@@ -29,7 +29,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
         let channel = EmbeddedChannel()
 
         let apiKey = try await authService.createAPIKey(for: "myapp")
-        let validated = await authService.validateAPIKey(apiKey.key)
+        let validated = await authService.validateAPIKey(apiKey.key, subdomain: "myapp")
         XCTAssertNotNil(validated)
 
         _ = try SubdomainValidator.validate("myapp")
