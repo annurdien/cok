@@ -112,8 +112,9 @@ API_KEY_SECRET=your-secret BASE_DOMAIN=localhost .build/release/cok-server
 | `TCP_PORT` | `5000` | TCP port for client tunnel connections |
 | `BASE_DOMAIN` | `localhost` | Base domain for subdomains |
 | `MAX_TUNNELS` | `1000` | Maximum concurrent tunnels |
-| `API_KEY_SECRET` | *(required)* | Secret for API key HMAC validation |
-| `METRICS_PATH` | `/metrics` | Prometheus metrics endpoint path |
+| `API_KEY_SECRET` | *(required)* | Secret for API key HMAC-SHA256 validation |
+| `ALLOWED_HOSTS` | `localhost` | Comma-separated allowed `Host` header values |
+| `HEALTH_CHECK_PATHS` | `/health,/health/live,/health/ready` | Comma-separated health check paths |
 
 ### Reverse Proxy Setup
 

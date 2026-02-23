@@ -2,19 +2,16 @@
 
 ## Overview
 
-Cok is a high-performance TCP-based tunneling system that exposes local services to the internet through secure tunnels.
+Cok is a TCP-based tunneling system that exposes local services to the internet. It consists of two binaries:
 
-## Components
-
-- **cok-server**: The central tunnel server that manages connections and routes traffic
-- **cok** (client): Local CLI tool that establishes tunnels to the server
+- **`cok-server`** — The central server that manages tunnel connections and routes HTTP traffic
+- **`cok`** — The local CLI client that establishes a tunnel to the server
 
 ## Quick Start
 
 ### Docker Compose (Recommended)
 
 ```bash
-# Set required variables and start
 API_KEY_SECRET=your-secret-min-32-chars BASE_DOMAIN=tunnel.yourdomain.com \
   docker compose up -d
 
@@ -25,7 +22,6 @@ curl http://localhost:8080/health
 ### Docker
 
 ```bash
-# Pull and run the server image
 docker run -d \
   -p 8080:8080 \
   -p 5000:5000 \
@@ -37,10 +33,7 @@ docker run -d \
 ### From Source
 
 ```bash
-# Build release binary
 swift build -c release --product cok-server
-
-# Run server
 API_KEY_SECRET=your-secret BASE_DOMAIN=localhost .build/release/cok-server
 ```
 
@@ -50,53 +43,58 @@ API_KEY_SECRET=your-secret BASE_DOMAIN=localhost .build/release/cok-server
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HTTP_PORT` | `8080` | HTTP server port for tunnel traffic |
+| `HTTP_PORT` | `8080` | HTTP port for incoming tunnel traffic |
 | `TCP_PORT` | `5000` | TCP port for client tunnel connections |
-| `BASE_DOMAIN` | `localhost` | Base domain for subdomains |
+| `BASE_DOMAIN` | `localhost` | Base domain for subdomain routing |
 | `MAX_TUNNELS` | `1000` | Maximum concurrent tunnels |
-| `API_KEY_SECRET` | *(required)* | Secret for API key HMAC validation |
-| `METRICS_PATH` | `/metrics` | Prometheus metrics endpoint |
+| `API_KEY_SECRET` | *(required)* | Secret for HMAC-SHA256 API key validation |
+| `ALLOWED_HOSTS` | `localhost` | Comma-separated allowed `Host` header values |
+| `HEALTH_CHECK_PATHS` | `/health,/health/live,/health/ready` | Comma-separated health check paths |
 
 ### Client Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `COK_SERVER_URL` | `localhost:5000` | TCP server address (`host:port`) |
-| `COK_SUBDOMAIN` | *(auto)* | Requested subdomain |
+| `COK_SERVER_HOST` | *(required)* | Tunnel server hostname |
+| `COK_SERVER_PORT` | `5000` | Tunnel server TCP port |
+| `COK_SUBDOMAIN` | *(required)* | Requested subdomain |
 | `COK_API_KEY` | *(required)* | API key for authentication |
+| `COK_LOCAL_HOST` | `localhost` | Local hostname to forward to |
+| `COK_LOCAL_PORT` | `3000` | Local port to forward to |
+
+> **Note**: When using the `cok` CLI, `--server` accepts `host:port` (e.g. `tunnel.example.com:5000`) and overrides `COK_SERVER_HOST`/`COK_SERVER_PORT`. `COK_SERVER_URL` is **not** a supported variable.
 
 ## Production Checklist
 
 ### Security
 
-- [ ] Set strong `API_KEY_SECRET` (min 32 characters)
-- [ ] Enable TLS on reverse proxy
-- [ ] Configure firewall rules (expose only 80/443 and TCP port publicly)
-- [ ] Set up rate limiting at load balancer
-- [ ] Review and restrict CORS if needed
+- [ ] Set a strong `API_KEY_SECRET` (min 32 characters)
+- [ ] Enable TLS on reverse proxy (expose 443 only; never expose 5000 without TLS termination)
+- [ ] Configure firewall: restrict direct access to 8080 and 5000; expose only 80/443 publicly
+- [ ] Configure `ALLOWED_HOSTS` to your domain(s)
+- [ ] Review rate limiting at the load balancer
 
 ### Networking
 
-- [ ] Configure reverse proxy (nginx/Caddy) — HTTP traffic via HTTP proxy, TCP tunnel port via stream proxy
-- [ ] Set up DNS wildcard for subdomains (`*.tunnel.yourdomain.com`)
+- [ ] Configure reverse proxy (nginx/Caddy) — HTTP traffic via HTTP proxy, TCP tunnel port via **stream proxy**
+- [ ] Set up DNS wildcard: `*.tunnel.yourdomain.com → your-server-ip`
 - [ ] Configure connection timeouts appropriately
 
 ### Monitoring
 
 - [ ] Set up Prometheus scraping for `/metrics`
-- [ ] Configure health check endpoint monitoring (`/health/live`, `/health/ready`)
-- [ ] Set up log aggregation
+- [ ] Monitor health endpoints (`/health/live`, `/health/ready`)
+- [ ] Set up log aggregation (server logs stdout in structured format)
 - [ ] Configure alerting thresholds
 
-### Scaling
+### Capacity
 
-- [ ] Configure resource limits in Docker/Kubernetes
 - [ ] Set `MAX_TUNNELS` based on available memory
-- [ ] Plan for horizontal scaling if needed
+- [ ] Configure Docker/Kubernetes resource limits
 
 ## Reverse Proxy Configuration
 
-The TCP tunnel port (`5000`) uses raw TCP — it must be proxied at the **stream** level, not HTTP level.
+The TCP tunnel port (`5000`) carries the raw binary protocol — it **must** be proxied at the TCP/stream level, **not** the HTTP level.
 
 ### Nginx
 
@@ -135,16 +133,16 @@ server {
 }
 ```
 
-For the TCP tunnel port, use Caddy's `tcp` layer via a separate config or use nginx stream for port 5000.
+For the TCP tunnel port, use nginx `stream {}` or a dedicated TCP proxy alongside Caddy.
 
 ## Health Checks
 
-### Endpoints
-
-- `GET /health` - Basic health check (HTTP 200 OK)
-- `GET /health/live` - Liveness probe
-- `GET /health/ready` - Readiness probe
-- `GET /metrics` - Prometheus metrics
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Basic liveness (200 OK if process is up) |
+| `GET /health/live` | Liveness probe |
+| `GET /health/ready` | Readiness probe (checks active tunnel state) |
+| `GET /metrics` | Prometheus metrics |
 
 ### Kubernetes Probes
 
@@ -164,33 +162,27 @@ readinessProbe:
   periodSeconds: 10
 ```
 
+Set `terminationGracePeriodSeconds: 45` to allow the 30-second graceful shutdown to complete.
+
 ## Graceful Shutdown
 
-The server handles SIGTERM and SIGINT signals gracefully:
+The server handles `SIGTERM` and `SIGINT`:
 
 1. Stops accepting new connections
-2. Waits for existing requests to complete (30s timeout)
-3. Closes all tunnel connections
+2. Waits for in-flight requests to complete (30 s timeout)
+3. Disconnects all active tunnels
 4. Exits cleanly
-
-For Kubernetes, set `terminationGracePeriodSeconds: 45` to allow time for shutdown.
 
 ## Troubleshooting
 
-### Connection Issues
-
 ```bash
-# Check if server is accepting HTTP traffic
+# Check HTTP server health
 curl -v http://localhost:8080/health
 
 # Test TCP tunnel port connectivity
 nc -zv localhost 5000
-```
 
-### Performance Issues
-
-```bash
-# Check Prometheus metrics
+# View Prometheus metrics
 curl http://localhost:8080/metrics
 
 # Run benchmarks
@@ -198,6 +190,4 @@ swift build -c release --product Benchmarks
 .build/release/Benchmarks
 ```
 
-### Logs
-
-Server logs are output to stdout with structured JSON format. Use your preferred log aggregator (e.g. Loki, CloudWatch, Datadog).
+Server logs are written to stdout in structured format. Use your preferred log aggregator (Loki, CloudWatch, Datadog, etc.).
