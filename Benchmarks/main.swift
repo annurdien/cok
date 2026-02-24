@@ -81,7 +81,6 @@ struct BenchmarkRunner {
     static func runAllBenchmarks() async throws -> [BenchmarkResult] {
         var results: [BenchmarkResult] = []
 
-        results.append(try await bufferPoolBenchmark())
         results.append(try await protocolFrameEncodeBenchmark())
         results.append(try await protocolFrameDecodeBenchmark())
         results.append(try await binaryCodecEncodeBenchmark())
@@ -92,13 +91,6 @@ struct BenchmarkRunner {
         return results
     }
 
-    static func bufferPoolBenchmark() async throws -> BenchmarkResult {
-        let pool = BufferPool()
-        return try await Benchmark(name: "BufferPool acquire/release", iterations: 100000) {
-            let buffer = pool.acquire(minimumCapacity: 4096)
-            pool.release(buffer)
-        }.run()
-    }
 
     static func protocolFrameEncodeBenchmark() async throws -> BenchmarkResult {
         let allocator = ByteBufferAllocator()

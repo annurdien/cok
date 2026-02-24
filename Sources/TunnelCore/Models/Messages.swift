@@ -58,20 +58,17 @@ public struct ConnectRequest: BinarySerializable, Sendable, CustomStringConverti
 public struct ConnectResponse: BinarySerializable, Sendable, CustomStringConvertible {
     public let tunnelID: UUID
     public let subdomain: String
-    public let sessionToken: String
     public let publicURL: String
     public let expiresAt: Date
 
     public init(
         tunnelID: UUID,
         subdomain: String,
-        sessionToken: String,
         publicURL: String,
         expiresAt: Date
     ) {
         self.tunnelID = tunnelID
         self.subdomain = subdomain
-        self.sessionToken = sessionToken
         self.publicURL = publicURL
         self.expiresAt = expiresAt
     }
@@ -79,7 +76,6 @@ public struct ConnectResponse: BinarySerializable, Sendable, CustomStringConvert
     public func serialize(into buffer: inout ByteBuffer) {
         buffer.writeUUID(tunnelID)
         buffer.writeStringWithLength(subdomain)
-        buffer.writeStringWithLength(sessionToken)
         buffer.writeStringWithLength(publicURL)
         buffer.writeDate(expiresAt)
     }
@@ -91,10 +87,6 @@ public struct ConnectResponse: BinarySerializable, Sendable, CustomStringConvert
             throw BinaryError.decodingError("subdomain")
         }
         self.subdomain = subdomain
-        guard let sessionToken = buffer.readStringWithLength() else {
-            throw BinaryError.decodingError("sessionToken")
-        }
-        self.sessionToken = sessionToken
         guard let publicURL = buffer.readStringWithLength() else {
             throw BinaryError.decodingError("publicURL")
         }

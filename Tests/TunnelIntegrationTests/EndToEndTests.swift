@@ -12,7 +12,6 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
     var connectionManager: ConnectionManager!
     var requestTracker: RequestTracker!
     var authService: AuthService!
-    var metrics: MetricsCollector!
     var healthChecker: HealthChecker!
 
     override func setUp() async throws {
@@ -21,7 +20,6 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
         connectionManager = ConnectionManager(maxConnections: 100, logger: logger)
         requestTracker = RequestTracker(timeout: 5.0, logger: logger)
         authService = AuthService(secret: "test-secret-key-minimum-32-bytes!")
-        metrics = MetricsCollector()
         healthChecker = HealthChecker(version: "0.1.0-test")
     }
 
@@ -73,11 +71,7 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
             remoteAddress: "192.168.1.1"
         )
 
-        // Use async let so track() and the send+complete run concurrently.
-        // async let guarantees track() starts suspending before the child task proceeds.
         async let responseResult = requestTracker.track(requestID: requestID)
-
-        // Yield once to let the async let task register the continuation in RequestTracker.
         await Task.yield()
 
         try await connectionManager.sendRequest(tunnelID: tunnel.id, request: request)
@@ -107,12 +101,8 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
     }
 
     func testRateLimitingIntegration() async throws {
-        let config = RateLimiter.Configuration(
-            capacity: 5,
-            refillRate: 5.0
-        )
+        let config = RateLimiter.Configuration(capacity: 5, refillRate: 5.0)
         let limiter = RateLimiter(configuration: config)
-
         let clientIP = "10.0.0.1"
 
         for _ in 0..<5 {
@@ -137,27 +127,6 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
 
         try RequestSizeValidator.validateBodySize(1024)
         try RequestSizeValidator.validateHeaderCount(50)
-    }
-
-    func testMetricsCollection() async throws {
-        await metrics.increment("requests.total", labels: ["method": "GET"])
-        await metrics.increment("requests.total", labels: ["method": "GET"])
-        await metrics.increment("requests.total", labels: ["method": "POST"])
-
-        let allMetrics = await metrics.allMetrics()
-        XCTAssertTrue(allMetrics.counters.keys.contains { $0.hasPrefix("requests.total") })
-
-        await metrics.gauge("connections.active", value: 42)
-        let afterGauge = await metrics.allMetrics()
-        XCTAssertTrue(afterGauge.gauges.keys.contains { $0.hasPrefix("connections.active") })
-
-        await metrics.histogram("request.duration", value: 0.1)
-        await metrics.histogram("request.duration", value: 0.2)
-        await metrics.histogram("request.duration", value: 0.5)
-
-        let stats = await metrics.histogramStats("request.duration")
-        XCTAssertNotNil(stats)
-        XCTAssertEqual(stats?.count, 3)
     }
 
     func testHealthCheckSystem() async throws {
@@ -217,53 +186,6 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(decodedRequest.requestID, original.requestID)
     }
 
-    func testBackpressureUnderLoad() async throws {
-        let config = BackpressureController.Configuration(
-            lowWatermark: 5,
-            highWatermark: 10,
-            criticalWatermark: 20
-        )
-        let controller = BackpressureController(configuration: config)
-
-        for _ in 0..<3 {
-            let result = await controller.requestPermission()
-            XCTAssertTrue(result.allowed)
-        }
-
-        let state1 = await controller.currentState()
-        XCTAssertEqual(state1, BackpressureController.State.accepting)
-
-        for _ in 0..<8 {
-            _ = await controller.requestPermission()
-        }
-
-        for _ in 0..<10 {
-            await controller.complete()
-        }
-
-        let finalState = await controller.currentState()
-        XCTAssertEqual(finalState, BackpressureController.State.accepting)
-    }
-
-    func testBufferPoolEfficiency() async throws {
-        let pool = BufferPoolActor(maxPoolSize: 10, defaultCapacity: 4096)
-
-        var buffers: [ByteBuffer] = []
-        for _ in 0..<5 {
-            let buffer = await pool.acquire(minimumCapacity: 1024)
-            buffers.append(buffer)
-        }
-
-        XCTAssertEqual(buffers.count, 5)
-
-        for buffer in buffers {
-            await pool.release(buffer)
-        }
-
-        let reused = await pool.acquire(minimumCapacity: 1024)
-        XCTAssertGreaterThanOrEqual(reused.capacity, 1024)
-    }
-
     func testGracefulShutdown() async throws {
         let shutdown = GracefulShutdown(logger: logger, timeout: 5)
 
@@ -288,26 +210,6 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(called2)
         let afterShutdown = await shutdown.shuttingDown
         XCTAssertTrue(afterShutdown)
-    }
-
-    func testRequestTracing() async throws {
-        let tracer = RequestTracer()
-
-        let context = await tracer.startSpan(operationName: "http.request")
-        await tracer.setTag(spanID: context.spanID, key: "http.method", value: "GET")
-        await tracer.setTag(spanID: context.spanID, key: "http.url", value: "/api/users")
-        await tracer.log(spanID: context.spanID, message: "Processing request")
-
-        let childContext = await tracer.startSpan(
-            operationName: "db.query", parentSpanID: context.spanID)
-        await tracer.setTag(
-            spanID: childContext.spanID, key: "db.statement", value: "SELECT * FROM users")
-        await tracer.endSpan(spanID: childContext.spanID)
-
-        await tracer.endSpan(spanID: context.spanID)
-
-        XCTAssertFalse(context.traceID.isEmpty)
-        XCTAssertFalse(context.spanID.isEmpty)
     }
 
     func testMultipleTunnelIsolation() async throws {
@@ -347,28 +249,6 @@ final class EndToEndTests: XCTestCase, @unchecked Sendable {
         try? await channel1.close()
         try? await channel2.close()
         try? await channel3.close()
-    }
-
-    func testConcurrentRequestsWithMetrics() async throws {
-        let channel = EmbeddedChannel()
-        _ = try await connectionManager.registerTunnel(
-            subdomain: "concurrent", apiKey: "key", channel: channel)
-
-        let localMetrics = MetricsCollector()
-        await withTaskGroup(of: Void.self) { group in
-            for i in 0..<10 {
-                group.addTask {
-                    await localMetrics.increment("requests", labels: ["id": "\(i)"])
-                    await localMetrics.histogram("latency", value: Double.random(in: 0.01...0.5))
-                }
-            }
-        }
-
-        let allMetrics = await localMetrics.allMetrics()
-        XCTAssertFalse(allMetrics.counters.isEmpty)
-        XCTAssertFalse(allMetrics.histograms.isEmpty)
-
-        try? await channel.close()
     }
 
     func testErrorPropagation() async throws {

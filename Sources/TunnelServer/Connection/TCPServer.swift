@@ -148,16 +148,9 @@ final class TCPHandler: ChannelInboundHandler, Sendable {
                 channel: channel
             )
 
-            let token = try await authService.generateSessionToken(
-                tunnelID: tunnel.id,
-                subdomain: apiKey.subdomain,
-                apiKey: request.apiKey
-            )
-
             let response = ConnectResponse(
                 tunnelID: tunnel.id,
                 subdomain: apiKey.subdomain,
-                sessionToken: token,
                 publicURL: "https://\(apiKey.subdomain).\(config.baseDomain)",
                 expiresAt: Date().addingTimeInterval(86400)
             )

@@ -62,7 +62,21 @@ API_KEY_SECRET=your-secret BASE_DOMAIN=localhost .build/release/cok-server
 | `COK_LOCAL_HOST` | `localhost` | Local hostname to forward to |
 | `COK_LOCAL_PORT` | `3000` | Local port to forward to |
 
-> **Note**: When using the `cok` CLI, `--server` accepts `host:port` (e.g. `tunnel.example.com:5000`) and overrides `COK_SERVER_HOST`/`COK_SERVER_PORT`. `COK_SERVER_URL` is **not** a supported variable.
+> **Note**: When using the `cok` CLI, `--server` accepts `host:port` (e.g. `tunnel.example.com:5000`) and overrides `COK_SERVER_HOST`/`COK_SERVER_PORT`.
+
+## API Key Generation
+
+API keys are stateless HMAC-SHA256 signatures that survive server restarts:
+
+```bash
+# Generate a key for a subdomain
+swift Scripts/generate-api-key.swift <subdomain> <secret>
+
+# Or use make
+make generate-key
+```
+
+Keys are validated server-side without any stored state — the server recomputes `HMAC-SHA256(subdomain, secret)` and compares. You can also create ephemeral in-memory keys programmatically via `AuthService.createAPIKey(for:expiresIn:)`.
 
 ## Production Checklist
 
@@ -82,10 +96,8 @@ API_KEY_SECRET=your-secret BASE_DOMAIN=localhost .build/release/cok-server
 
 ### Monitoring
 
-- [ ] Set up Prometheus scraping for `/metrics`
 - [ ] Monitor health endpoints (`/health/live`, `/health/ready`)
-- [ ] Set up log aggregation (server logs stdout in structured format)
-- [ ] Configure alerting thresholds
+- [ ] Set up log aggregation (server logs to stdout in structured format)
 
 ### Capacity
 
@@ -142,7 +154,6 @@ For the TCP tunnel port, use nginx `stream {}` or a dedicated TCP proxy alongsid
 | `GET /health` | Basic liveness (200 OK if process is up) |
 | `GET /health/live` | Liveness probe |
 | `GET /health/ready` | Readiness probe (checks active tunnel state) |
-| `GET /metrics` | Prometheus metrics |
 
 ### Kubernetes Probes
 
@@ -181,9 +192,6 @@ curl -v http://localhost:8080/health
 
 # Test TCP tunnel port connectivity
 nc -zv localhost 5000
-
-# View Prometheus metrics
-curl http://localhost:8080/metrics
 
 # Run benchmarks
 swift build -c release --product Benchmarks

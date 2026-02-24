@@ -48,14 +48,17 @@ The above command opens a tunnel and forwards traffic to `localhost:8080`.
 For local development and testing:
 
 ```bash
-# Quick start - build and setup everything
-make all
+# Build and start the server in the background
+make server-bg
 
-# In terminal 1: Start test HTTP server
+# Generate an API key for the test subdomain
+make generate-key
+
+# In terminal 1: Start a local test HTTP server
 make test-site
 
-# In terminal 2: Start tunnel client
-make test-client
+# In terminal 2: Start the tunnel client
+make client
 
 # Visit: http://test-client.localhost:8080
 ```
@@ -75,7 +78,7 @@ cok -p 8080 -s myapp
 | `--subdomain` | `-s` | `COK_SUBDOMAIN` | Custom subdomain (auto-generated if not set) |
 | `--api-key` | | `COK_API_KEY` | API key for authentication |
 | `--server` | | `COK_SERVER_URL` | Server address (default: `localhost:5000`) |
-| `--host` | | | Local host (default: `127.0.0.1`) |
+| `--host` | | | Local host (default: `localhost`) |
 | `--verbose` | `-v` | | Verbose output |
 
 ## Deploy Your Own Server
@@ -143,6 +146,8 @@ server {
 ```
 
 Set up wildcard DNS: `*.tunnel.yourdomain.com → your-server-ip`
+
+See [Docs/Deployment.md](Docs/Deployment.md) for the full deployment guide and [Docs/Architecture.md](Docs/Architecture.md) for architecture details.
 
 ## License
 

@@ -83,7 +83,6 @@ All payloads use a **custom binary encoding** (not JSON). Fields are serialized 
 |-------|------|-------|
 | `tunnelID` | UUID (16 bytes) | Assigned tunnel UUID |
 | `subdomain` | length-prefixed string | Final assigned subdomain |
-| `sessionToken` | length-prefixed string | JWT for the tunnel session |
 | `publicURL` | length-prefixed string | e.g. `http://myapp.tunnel.example.com` |
 | `expiresAt` | Date (8-byte timestamp) | Session expiry |
 
@@ -171,15 +170,14 @@ CRC32 is calculated over the entire frame **excluding** the CRC field itself usi
 ### Maximum Sizes
 
 - **Payload**: 10 MB (hardcoded in `ProtocolFrame.maxPayloadSize`)
-- **Subdomain**: 63 characters (validated in `ClientConfig`)
+- **Subdomain**: 63 characters (validated in `SubdomainValidator`)
 
 ## Security
 
 1. **Authentication**: `apiKey` required in `ConnectRequest`; validated via HMAC-SHA256 against the server secret
-2. **Session tokens**: JWT issued in `ConnectResponse` for the tunnel lifecycle
-3. **Rate limiting**: enforced at the server HTTP layer before requests reach tunnels
-4. **Input validation**: all string fields sanitized via `InputSanitizer`
-5. **Size limits**: payload cap prevents DoS via oversized frames
+2. **Rate limiting**: enforced at the server HTTP layer before requests reach tunnels
+3. **Input validation**: all string fields sanitized via `InputSanitizer`
+4. **Size limits**: payload cap prevents DoS via oversized frames
 
 ## Future Extensions
 
